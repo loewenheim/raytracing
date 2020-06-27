@@ -17,6 +17,14 @@ impl Color {
         }
     }
 
+    pub fn red() -> Self {
+        Self {
+            red: 1.0,
+            green: 0.0,
+            blue: 0.0,
+        }
+    }
+
     pub fn blend(&self, other: &Self, ratio: f64) -> Self {
         Self {
             red: ratio * self.red + (1.0 - ratio) * other.red,
