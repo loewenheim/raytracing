@@ -32,7 +32,7 @@ impl From<super::geometry::Vec3> for Color {
 }
 pub mod geometry {
     use std::ops::{
-        Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign
+        Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
     };
 
     #[derive(Clone, Copy, Debug)]
@@ -55,6 +55,12 @@ pub mod geometry {
     impl DerefMut for Point3 {
         fn deref_mut(&mut self) -> &mut Self::Target {
             &mut self.0
+        }
+    }
+
+    impl Default for Point3 {
+        fn default() -> Self {
+            Self([0.0, 0.0, 0.0])
         }
     }
 
@@ -102,6 +108,12 @@ pub mod geometry {
     impl DerefMut for Vec3 {
         fn deref_mut(&mut self) -> &mut Self::Target {
             &mut self.0
+        }
+    }
+
+    impl Default for Vec3 {
+        fn default() -> Self {
+            Self([0.0, 0.0, 0.0])
         }
     }
 
@@ -176,6 +188,14 @@ pub mod geometry {
         }
     }
 
+    impl Sub<Point3> for Point3 {
+        type Output = Vec3;
+
+        fn sub(self, other: Self) -> Self::Output {
+            Vec3::new(self[0] - other[0], self[1] - other[1], self[2] - other[2])
+        }
+    }
+
     impl Mul<f64> for Vec3 {
         type Output = Self;
         fn mul(self, scalar: f64) -> Self::Output {
@@ -208,14 +228,19 @@ pub mod geometry {
 
     #[derive(Clone, Copy)]
     pub struct Ray {
-        origin: Point3,
-        direction: Vec3,
+        pub origin: Point3,
+        pub direction: Vec3,
     }
 
     impl Ray {
         pub fn at(&self, t: f64) -> Point3 {
             self.origin + self.direction * t
         }
-    }
 
+        pub fn color(&self) -> super::color::Color {
+            let unit = self.direction.unit();
+            let t = 0.5 * (unit[1] + 1.0);
+            (Vec3::new(1.0, 1.0, 1.0) * (1.0 - t) + Vec3::new(0.5, 0.7, 1.0) * t).into()
+        }
+    }
 }
