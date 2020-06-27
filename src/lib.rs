@@ -262,15 +262,15 @@ pub mod geometry {
         }: &Sphere,
     ) -> Option<f64> {
         let oc = *o - *c;
-        let a = dir.dot(*dir);
-        let b = 2.0 * oc.dot(*dir);
-        let c = oc.dot(oc) - r.powi(2);
-        let discriminant = b.powi(2) - 4.0 * a * c;
+        let a = dir.norm_squared();
+        let half_b = oc.dot(*dir);
+        let c = oc.norm_squared() - r.powi(2);
+        let discriminant = half_b.powi(2) - a * c;
 
         if discriminant < 0.0 {
             None
         } else {
-            Some((-b - discriminant.sqrt()) / (2.0 * a))
+            Some((-half_b - discriminant.sqrt()) / a)
         }
     }
 }
