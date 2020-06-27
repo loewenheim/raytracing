@@ -1,62 +1,63 @@
-
 pub mod color {
-use std::fmt;
-#[derive(Clone, Copy, Debug)]
-pub struct Color{
-    pub red: f64,
-    pub green: f64,
-    pub blue: f64,
-}
+    use std::fmt;
+    #[derive(Clone, Copy, Debug)]
+    pub struct Color {
+        pub red: f64,
+        pub green: f64,
+        pub blue: f64,
+    }
 
-impl Color {
-    pub fn white() -> Self {
-        Self {
-            red: 1.0,
-            green: 1.0,
-            blue: 1.0,
+    impl Color {
+        pub fn white() -> Self {
+            Self {
+                red: 1.0,
+                green: 1.0,
+                blue: 1.0,
+            }
+        }
+
+        pub fn red() -> Self {
+            Self {
+                red: 1.0,
+                green: 0.0,
+                blue: 0.0,
+            }
+        }
+
+        pub fn blend(&self, other: &Self, ratio: f64) -> Self {
+            Self {
+                red: ratio * self.red + (1.0 - ratio) * other.red,
+                green: ratio * self.green + (1.0 - ratio) * other.green,
+                blue: ratio * self.blue + (1.0 - ratio) * other.blue,
+            }
         }
     }
 
-    pub fn red() -> Self {
-        Self {
-            red: 1.0,
-            green: 0.0,
-            blue: 0.0,
+    impl fmt::Display for Color {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            let factor = 255.999;
+            write!(
+                f,
+                "{} {} {}",
+                (self.red * factor) as u8,
+                (self.green * factor) as u8,
+                (self.blue * factor) as u8
+            )
         }
     }
 
-    pub fn blend(&self, other: &Self, ratio: f64) -> Self {
-        Self {
-            red: ratio * self.red + (1.0 - ratio) * other.red,
-            green: ratio * self.green + (1.0 - ratio) * other.green,
-            blue: ratio * self.blue + (1.0 - ratio) * other.blue,
+    impl From<super::geometry::Vec3> for Color {
+        fn from(vec: super::geometry::Vec3) -> Self {
+            Self {
+                red: vec[0],
+                green: vec[1],
+                blue: vec[2],
+            }
         }
     }
-}
-
-impl fmt::Display for Color {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let factor = 255.999;
-        write!(
-            f,
-            "{} {} {}",
-            (self.red * factor) as u8, (self.green * factor) as u8, (self.blue * factor) as u8
-        )
-    }
-}
-
-impl From<super::geometry::Vec3> for Color {
-    fn from(vec: super::geometry::Vec3) -> Self {
-        Self {
-            red: vec[0],
-            green: vec[1],
-            blue: vec[2],
-        }
-    }
-}
-
 }
 pub mod geometry {
+    use super::color::Color;
     use std::ops::{
         Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
     };
@@ -264,26 +265,28 @@ pub mod geometry {
         }
 
         pub fn color(&self) -> super::color::Color {
-            use super::color::Color;
-
             let sphere = Sphere {
                 center: Point3::new(0.0, 0.0, -1.0),
                 radius: 0.5,
             };
 
-            if intersects(self, &sphere) {
-                return Color::red();
+            match intersection(self, &sphere) {
+                Some(t) => {
+                    let n = (self.at(t) - Point3::new(0.0, 0.0, -1.0)).unit();
+                    Color::from((n + Vec3::new(1.0, 1.0, 1.0)) * 0.5)
+                }
+                None => {
+                    let unit = self.direction.unit();
+                    let t = 0.5 * (unit[1] + 1.0);
+                    let blue = Color {
+                        red: 0.5,
+                        green: 0.7,
+                        blue: 1.0,
+                    };
+
+                    blue.blend(&Color::white(), t)
+                }
             }
-
-            let unit = self.direction.unit();
-            let t = 0.5 * (unit[1] + 1.0);
-            let blue = Color {
-                red: 0.5,
-                green: 0.7,
-                blue: 1.0,
-            };
-
-            blue.blend(&Color::white(), t)
         }
     }
 
@@ -293,12 +296,26 @@ pub mod geometry {
         pub radius: f64,
     }
 
-    pub fn intersects(Ray{ origin: o, direction: dir }: &Ray, Sphere {center: c, radius: r}: &Sphere) -> bool {
+    pub fn intersection(
+        Ray {
+            origin: o,
+            direction: dir,
+        }: &Ray,
+        Sphere {
+            center: c,
+            radius: r,
+        }: &Sphere,
+    ) -> Option<f64> {
         let oc = *o - *c;
         let a = dir.dot(*dir);
         let b = 2.0 * oc.dot(*dir);
         let c = oc.dot(oc) - r.powi(2);
         let discriminant = b.powi(2) - 4.0 * a * c;
-        discriminant > 0.0
+
+        if discriminant < 0.0 {
+            None
+        } else {
+            Some((-b - discriminant.sqrt()) / (2.0 * a))
+        }
     }
 }

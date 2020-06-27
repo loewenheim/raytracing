@@ -1,5 +1,5 @@
-use raytracing::geometry::{Point3, Ray, Vec3};
 use raytracing::color::Color;
+use raytracing::geometry::{Point3, Ray, Vec3};
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
