@@ -1,4 +1,5 @@
-use raytracing::{Vec3, Color};
+use raytracing::Color;
+use raytracing::geometry::{Vec3, Point3, Ray};
 
 fn main() {
     const IMAGE_WIDTH: u16 = 256;
