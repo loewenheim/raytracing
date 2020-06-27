@@ -1,5 +1,7 @@
 pub mod color {
     use std::fmt;
+
+    /// A color with fractional RGB values (intended to be in [0, 1]).
     #[derive(Clone, Copy, Debug)]
     pub struct Color {
         pub red: f64,
@@ -8,6 +10,7 @@ pub mod color {
     }
 
     impl Color {
+        /// Standard white color.
         pub fn white() -> Self {
             Self {
                 red: 1.0,
@@ -16,6 +19,7 @@ pub mod color {
             }
         }
 
+        /// Standard red color.
         pub fn red() -> Self {
             Self {
                 red: 1.0,
@@ -24,7 +28,11 @@ pub mod color {
             }
         }
 
+        /// Blends this color with another. A `ratio` of 1.0 results in `self`,
+        /// 0.0 results in `other`.
         pub fn blend(&self, other: &Self, ratio: f64) -> Self {
+            assert!(ratio >= 0.0);
+            assert!(ratio <= 1.0);
             Self {
                 red: ratio * self.red + (1.0 - ratio) * other.red,
                 green: ratio * self.green + (1.0 - ratio) * other.green,
@@ -56,16 +64,19 @@ pub mod color {
         }
     }
 }
+
 pub mod geometry {
     use super::color::Color;
     use std::ops::{
         Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
     };
 
+    /// A point in three-dimensional space.
     #[derive(Clone, Copy, Debug)]
     pub struct Point3([f64; 3]);
 
     impl Point3 {
+        /// Returns a new point with the given three coordinates.
         pub fn new(x: f64, y: f64, z: f64) -> Self {
             Self([x, y, z])
         }
@@ -91,26 +102,32 @@ pub mod geometry {
         }
     }
 
+    /// A vector in three-dimensional space.
     #[derive(Clone, Copy, Debug)]
     pub struct Vec3([f64; 3]);
 
     impl Vec3 {
+        /// Returns a new vector with the given three components.
         pub fn new(x: f64, y: f64, z: f64) -> Self {
             Self([x, y, z])
         }
 
+        /// Returns the (Euclidean) norm of the vector.
         pub fn norm(&self) -> f64 {
             self.norm_squared().sqrt()
         }
 
+        /// Returns the square of the (Euclidean) norm of the vector.
         pub fn norm_squared(&self) -> f64 {
             self[0].powi(2) + self[1].powi(2) + self[2].powi(2)
         }
 
+        /// Returns the dot (scalar) product of this vector with another.
         pub fn dot(self, other: Self) -> f64 {
             self[0] * other[0] + self[1] * other[1] + self[2] * other[2]
         }
 
+        /// Returns the cross (vector) product of this vector with another.
         pub fn cross(self, other: Self) -> Self {
             Self::new(
                 self[1] * other[2] - self[2] * other[1],
@@ -119,6 +136,7 @@ pub mod geometry {
             )
         }
 
+        /// Returns a unit vector with the same direction as this.
         pub fn unit(&self) -> Self {
             *self / self.norm()
         }
@@ -253,6 +271,9 @@ pub mod geometry {
         }
     }
 
+
+    /// A ray in three-dimensional space, i.e., a set of the form
+    /// {A + tb | t ∈ ℝ+}, where A is a [Point3] and b a [Vec3].
     #[derive(Clone, Copy)]
     pub struct Ray {
         pub origin: Point3,
@@ -260,10 +281,13 @@ pub mod geometry {
     }
 
     impl Ray {
+        /// Returns the point origin + t * direction.
         pub fn at(&self, t: f64) -> Point3 {
+            assert!(t >= 0.0);
             self.origin + self.direction * t
         }
 
+        /// Colors the point the ray hits.
         pub fn color(&self) -> super::color::Color {
             let sphere = Sphere {
                 center: Point3::new(0.0, 0.0, -1.0),
@@ -290,12 +314,16 @@ pub mod geometry {
         }
     }
 
+    /// A sphere in three-dimensional space.
     #[derive(Copy, Clone, Debug)]
     pub struct Sphere {
         pub center: Point3,
         pub radius: f64,
     }
 
+    /// Computes the intersection point of the given
+    /// ray with the given sphere (as a ray parameter).
+    /// Returns None if the ray misses the sphere.
     pub fn intersection(
         Ray {
             origin: o,
