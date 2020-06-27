@@ -3,9 +3,27 @@ pub mod color {
 use std::fmt;
 #[derive(Clone, Copy, Debug)]
 pub struct Color{
-    red: f64,
-    green: f64,
-    blue: f64,
+    pub red: f64,
+    pub green: f64,
+    pub blue: f64,
+}
+
+impl Color {
+    pub fn white() -> Self {
+        Self {
+            red: 1.0,
+            green: 1.0,
+            blue: 1.0,
+        }
+    }
+
+    pub fn blend(&self, other: &Self, ratio: f64) -> Self {
+        Self {
+            red: ratio * self.red + (1.0 - ratio) * other.red,
+            green: ratio * self.green + (1.0 - ratio) * other.green,
+            blue: ratio * self.blue + (1.0 - ratio) * other.blue,
+        }
+    }
 }
 
 impl fmt::Display for Color {
@@ -238,9 +256,17 @@ pub mod geometry {
         }
 
         pub fn color(&self) -> super::color::Color {
+            use super::color::Color;
+
             let unit = self.direction.unit();
             let t = 0.5 * (unit[1] + 1.0);
-            (Vec3::new(1.0, 1.0, 1.0) * (1.0 - t) + Vec3::new(0.5, 0.7, 1.0) * t).into()
+            let blue = super::color::Color {
+                red: 0.5,
+                green: 0.7,
+                blue: 1.0,
+            };
+
+            blue.blend(&Color::white(), t)
         }
     }
 }
