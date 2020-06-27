@@ -277,4 +277,19 @@ pub mod geometry {
             blue.blend(&Color::white(), t)
         }
     }
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct Sphere {
+        pub center: Point3,
+        pub radius: f64,
+    }
+
+    pub fn intersects(Ray{ origin: o, direction: dir }: &Ray, Sphere {center: c, radius: r}: &Sphere) -> bool {
+        let oc = *o - *c;
+        let a = dir.dot(*dir);
+        let b = 2.0 * oc.dot(*dir);
+        let c = oc.dot(oc) - r.powi(2);
+        let discriminant = b.powi(2) - 4.0 * a * c;
+        discriminant > 0.0
+    }
 }
