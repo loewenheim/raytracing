@@ -6,6 +6,31 @@ pub mod geometry {
         Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
     };
 
+    /// A trait for things that can be intersected by rays (such as spheres).
+    trait Intersection {
+        /// Computes the intersection point of the given
+        /// ray with this object.
+        /// Returns None if the ray misses.
+        fn intersection(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint>;
+    }
+
+    /// Contains information about the intersection of a ray
+    /// with an object: the actual point, the normal vector
+    /// at that point, and the parameter of the ray.
+    #[derive(Debug, Clone, Copy)]
+    struct IntersectionPoint {
+        point: Point3,
+        normal: Vec3,
+        t: f64,
+        face: Face,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum Face {
+        Front,
+        Back,
+    }
+
     /// A point in three-dimensional space.
     #[derive(Clone, Copy, Debug)]
     pub struct Point3(pub [f64; 3]);
@@ -224,10 +249,9 @@ pub mod geometry {
                 radius: 0.5,
             };
 
-            match intersection(self, &sphere) {
-                Some(t) => {
-                    let n = (self.at(t) - Point3([0.0, 0.0, -1.0])).unit();
-                    ((n + Vec3([1.0, 1.0, 1.0])) * 0.5).into()
+            match sphere.intersection(self, 0.0, f64::INFINITY) {
+                Some(IntersectionPoint { normal, .. }) => {
+                    ((normal + Vec3([1.0, 1.0, 1.0])) * 0.5).into()
                 }
                 None => {
                     let unit = self.direction.unit();
@@ -248,29 +272,41 @@ pub mod geometry {
         pub radius: f64,
     }
 
-    /// Computes the intersection point of the given
-    /// ray with the given sphere (as a ray parameter).
-    /// Returns None if the ray misses the sphere.
-    pub fn intersection(
-        Ray {
-            origin: o,
-            direction: dir,
-        }: &Ray,
-        Sphere {
-            center: c,
-            radius: r,
-        }: &Sphere,
-    ) -> Option<f64> {
-        let oc = *o - *c;
-        let a = dir.norm_squared();
-        let half_b = oc.dot(*dir);
-        let c = oc.norm_squared() - r.powi(2);
-        let discriminant = half_b.powi(2) - a * c;
+    impl Intersection for Sphere {
+        fn intersection(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint> {
+            let Sphere { center, radius: r } = self;
+            let Ray {
+                origin: o,
+                direction: dir,
+            } = ray;
+            let oc = *o - *center;
+            let a = dir.norm_squared();
+            let half_b = oc.dot(*dir);
+            let c = oc.norm_squared() - r.powi(2);
+            let discriminant = half_b.powi(2) - a * c;
 
-        if discriminant < 0.0 {
-            None
-        } else {
-            Some((-half_b - discriminant.sqrt()) / a)
+            if discriminant < 0.0 {
+                None
+            } else {
+                let t = (-half_b - discriminant.sqrt()) / a;
+                if t > tmin && t < tmax {
+                    let point = ray.at(t);
+                    let normal = (point - *center) / *r;
+                    let face = if dir.dot(normal) < 0.0 {
+                        Face::Front
+                    } else {
+                        Face::Back
+                    };
+                    Some(IntersectionPoint {
+                        t,
+                        point,
+                        normal,
+                        face,
+                    })
+                } else {
+                    None
+                }
+            }
         }
     }
 }
