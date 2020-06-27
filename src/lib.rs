@@ -1,86 +1,14 @@
-pub mod color {
-    use std::fmt;
-
-    /// A color with fractional RGB values (intended to be in [0, 1]).
-    #[derive(Clone, Copy, Debug)]
-    pub struct Color {
-        pub red: f64,
-        pub green: f64,
-        pub blue: f64,
-    }
-
-    impl Color {
-        /// Standard white color.
-        pub fn white() -> Self {
-            Self {
-                red: 1.0,
-                green: 1.0,
-                blue: 1.0,
-            }
-        }
-
-        /// Standard red color.
-        pub fn red() -> Self {
-            Self {
-                red: 1.0,
-                green: 0.0,
-                blue: 0.0,
-            }
-        }
-
-        /// Blends this color with another. A `ratio` of 1.0 results in `self`,
-        /// 0.0 results in `other`.
-        pub fn blend(&self, other: &Self, ratio: f64) -> Self {
-            assert!(ratio >= 0.0);
-            assert!(ratio <= 1.0);
-            Self {
-                red: ratio * self.red + (1.0 - ratio) * other.red,
-                green: ratio * self.green + (1.0 - ratio) * other.green,
-                blue: ratio * self.blue + (1.0 - ratio) * other.blue,
-            }
-        }
-    }
-
-    impl fmt::Display for Color {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            let factor = 255.999;
-            write!(
-                f,
-                "{} {} {}",
-                (self.red * factor) as u8,
-                (self.green * factor) as u8,
-                (self.blue * factor) as u8
-            )
-        }
-    }
-
-    impl From<super::geometry::Vec3> for Color {
-        fn from(vec: super::geometry::Vec3) -> Self {
-            Self {
-                red: vec[0],
-                green: vec[1],
-                blue: vec[2],
-            }
-        }
-    }
-}
+pub type Rgb = image::Rgb<u8>;
 
 pub mod geometry {
-    use super::color::Color;
+    use super::Rgb;
     use std::ops::{
         Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
     };
 
     /// A point in three-dimensional space.
     #[derive(Clone, Copy, Debug)]
-    pub struct Point3([f64; 3]);
-
-    impl Point3 {
-        /// Returns a new point with the given three coordinates.
-        pub fn new(x: f64, y: f64, z: f64) -> Self {
-            Self([x, y, z])
-        }
-    }
+    pub struct Point3(pub [f64; 3]);
 
     impl Deref for Point3 {
         type Target = [f64];
@@ -104,14 +32,9 @@ pub mod geometry {
 
     /// A vector in three-dimensional space.
     #[derive(Clone, Copy, Debug)]
-    pub struct Vec3([f64; 3]);
+    pub struct Vec3(pub [f64; 3]);
 
     impl Vec3 {
-        /// Returns a new vector with the given three components.
-        pub fn new(x: f64, y: f64, z: f64) -> Self {
-            Self([x, y, z])
-        }
-
         /// Returns the (Euclidean) norm of the vector.
         pub fn norm(&self) -> f64 {
             self.norm_squared().sqrt()
@@ -129,11 +52,11 @@ pub mod geometry {
 
         /// Returns the cross (vector) product of this vector with another.
         pub fn cross(self, other: Self) -> Self {
-            Self::new(
+            Self([
                 self[1] * other[2] - self[2] * other[1],
                 self[2] * other[0] - self[0] * other[2],
                 self[0] * other[1] - self[1] * other[0],
-            )
+            ])
         }
 
         /// Returns a unit vector with the same direction as this.
@@ -162,11 +85,19 @@ pub mod geometry {
         }
     }
 
+    impl Into<Rgb> for Vec3 {
+        fn into(self) -> Rgb {
+            let [red, green, blue] = self.0;
+            let convert = |x| (x * 255.999) as u8;
+            image::Rgb([convert(red), convert(green), convert(blue)])
+        }
+    }
+
     impl Add<Vec3> for Vec3 {
         type Output = Self;
 
         fn add(self, other: Vec3) -> Self::Output {
-            Self::new(self[0] + other[0], self[1] + other[1], self[2] + other[2])
+            Self([self[0] + other[0], self[1] + other[1], self[2] + other[2]])
         }
     }
 
@@ -182,7 +113,7 @@ pub mod geometry {
         type Output = Self;
 
         fn add(self, vec: Vec3) -> Self::Output {
-            Self::new(self[0] + vec[0], self[1] + vec[1], self[2] + vec[2])
+            Self([self[0] + vec[0], self[1] + vec[1], self[2] + vec[2]])
         }
     }
 
@@ -197,7 +128,7 @@ pub mod geometry {
     impl Neg for Vec3 {
         type Output = Self;
         fn neg(self) -> Self::Output {
-            Self::new(-self[0], -self[1], -self[2])
+            Self([-self[0], -self[1], -self[2]])
         }
     }
 
@@ -205,7 +136,7 @@ pub mod geometry {
         type Output = Self;
 
         fn sub(self, other: Vec3) -> Self::Output {
-            Self::new(self[0] - other[0], self[1] - other[1], self[2] - other[2])
+            Self([self[0] - other[0], self[1] - other[1], self[2] - other[2]])
         }
     }
 
@@ -221,7 +152,7 @@ pub mod geometry {
         type Output = Self;
 
         fn sub(self, vec: Vec3) -> Self::Output {
-            Self::new(self[0] - vec[0], self[1] - vec[1], self[2] - vec[2])
+            Self([self[0] - vec[0], self[1] - vec[1], self[2] - vec[2]])
         }
     }
 
@@ -237,14 +168,14 @@ pub mod geometry {
         type Output = Vec3;
 
         fn sub(self, other: Self) -> Self::Output {
-            Vec3::new(self[0] - other[0], self[1] - other[1], self[2] - other[2])
+            Vec3([self[0] - other[0], self[1] - other[1], self[2] - other[2]])
         }
     }
 
     impl Mul<f64> for Vec3 {
         type Output = Self;
         fn mul(self, scalar: f64) -> Self::Output {
-            Self::new(self[0] * scalar, self[1] * scalar, self[2] * scalar)
+            Self([self[0] * scalar, self[1] * scalar, self[2] * scalar])
         }
     }
 
@@ -259,7 +190,7 @@ pub mod geometry {
     impl Div<f64> for Vec3 {
         type Output = Self;
         fn div(self, scalar: f64) -> Self::Output {
-            Self::new(self[0] / scalar, self[1] / scalar, self[2] / scalar)
+            Self([self[0] / scalar, self[1] / scalar, self[2] / scalar])
         }
     }
 
@@ -270,7 +201,6 @@ pub mod geometry {
             self[2] /= scalar;
         }
     }
-
 
     /// A ray in three-dimensional space, i.e., a set of the form
     /// {A + tb | t ∈ ℝ+}, where A is a [Point3] and b a [Vec3].
@@ -287,28 +217,25 @@ pub mod geometry {
             self.origin + self.direction * t
         }
 
-        /// Colors the point the ray hits.
-        pub fn color(&self) -> super::color::Color {
+        /// Rgbs the point the ray hits.
+        pub fn color(&self) -> super::Rgb {
             let sphere = Sphere {
-                center: Point3::new(0.0, 0.0, -1.0),
+                center: Point3([0.0, 0.0, -1.0]),
                 radius: 0.5,
             };
 
             match intersection(self, &sphere) {
                 Some(t) => {
-                    let n = (self.at(t) - Point3::new(0.0, 0.0, -1.0)).unit();
-                    Color::from((n + Vec3::new(1.0, 1.0, 1.0)) * 0.5)
+                    let n = (self.at(t) - Point3([0.0, 0.0, -1.0])).unit();
+                    ((n + Vec3([1.0, 1.0, 1.0])) * 0.5).into()
                 }
                 None => {
                     let unit = self.direction.unit();
                     let t = 0.5 * (unit[1] + 1.0);
-                    let blue = Color {
-                        red: 0.5,
-                        green: 0.7,
-                        blue: 1.0,
-                    };
+                    let blue = Vec3([0.5, 0.7, 1.0]);
+                    let white = Vec3([1.0, 1.0, 1.0]);
 
-                    blue.blend(&Color::white(), t)
+                    (blue * t + white * (1.0 - t)).into()
                 }
             }
         }
