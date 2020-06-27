@@ -1,3 +1,5 @@
+use raytracing::{Vec3, Color};
+
 fn main() {
     const IMAGE_WIDTH: u16 = 256;
     const IMAGE_HEIGHT: u16 = 256;
@@ -11,13 +13,10 @@ fn main() {
         for i in 0..IMAGE_WIDTH {
             let r = f64::from(i) / f64::from(IMAGE_WIDTH-1);
             let g = f64::from(j) / f64::from(IMAGE_HEIGHT-1);
-            let b = 0.25f64;
+            let b = 0.25;
 
-            let ir = (r * 256.0) as u8;
-            let ig = (g * 256.0) as u8;
-            let ib = (b * 256.0) as u8;
-
-            println!("{} {} {}", ir, ig, ib);
+            let color = Color(Vec3::new(r, g, b));
+            println!("{}", color);
         }
     }
     eprintln!("\nDone.");
