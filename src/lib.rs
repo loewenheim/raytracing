@@ -1,18 +1,35 @@
+
+pub mod color {
 use std::fmt;
-#[derive(Clone, Copy)]
-pub struct Color(pub geometry::Vec3);
+#[derive(Clone, Copy, Debug)]
+pub struct Color{
+    red: f64,
+    green: f64,
+    blue: f64,
+}
 
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let scaled = self.0 * 256.0;
+        let factor = 255.999;
         write!(
             f,
             "{} {} {}",
-            scaled[0] as u8, scaled[1] as u8, scaled[2] as u8
+            (self.red * factor) as u8, (self.green * factor) as u8, (self.blue * factor) as u8
         )
     }
 }
 
+impl From<super::geometry::Vec3> for Color {
+    fn from(vec: super::geometry::Vec3) -> Self {
+        Self {
+            red: vec[0],
+            green: vec[1],
+            blue: vec[2],
+        }
+    }
+}
+
+}
 pub mod geometry {
     use std::ops::{
         Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign
