@@ -18,7 +18,7 @@ fn main() {
 
     let image: RgbImage = ImageBuffer::from_fn(IMAGE_WIDTH, IMAGE_HEIGHT, |i, j| {
         let u = f64::from(i) / f64::from(IMAGE_WIDTH - 1);
-        let v = f64::from(j) / f64::from(IMAGE_HEIGHT - 1);
+        let v = f64::from(IMAGE_HEIGHT - j) / f64::from(IMAGE_HEIGHT - 1);
 
         let ray = Ray {
             origin,
