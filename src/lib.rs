@@ -309,4 +309,19 @@ pub mod geometry {
             }
         }
     }
+
+    impl Intersection for Vec<& dyn Intersection> {
+        fn intersection(&self, ray: &Ray, tmin: f64, mut tmax: f64) -> Option<IntersectionPoint> {
+            let mut intersection_point = None;
+
+            for object in self.iter() {
+                if let  Some(new_ip) = object.intersection(ray, tmin, tmax) {
+                        intersection_point = Some(new_ip);
+                        tmax = new_ip.t;
+                }
+            }
+
+            intersection_point
+        }
+    }
 }
