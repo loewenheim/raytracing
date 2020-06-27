@@ -266,9 +266,18 @@ pub mod geometry {
         pub fn color(&self) -> super::color::Color {
             use super::color::Color;
 
+            let sphere = Sphere {
+                center: Point3::new(0.0, 0.0, -1.0),
+                radius: 0.5,
+            };
+
+            if intersects(self, &sphere) {
+                return Color::red();
+            }
+
             let unit = self.direction.unit();
             let t = 0.5 * (unit[1] + 1.0);
-            let blue = super::color::Color {
+            let blue = Color {
                 red: 0.5,
                 green: 0.7,
                 blue: 1.0,
