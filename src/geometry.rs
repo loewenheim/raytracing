@@ -1,5 +1,6 @@
 
 use super::Rgb;
+use std::iter::Sum;
 use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
@@ -83,7 +84,7 @@ impl Vec3 {
     }
 
     /// Returns a unit vector with the same direction as this.
-    pub fn unit(&self) -> Self {
+    pub fn normed(&self) -> Self {
         *self / self.norm()
     }
 }
@@ -110,7 +111,7 @@ impl Default for Vec3 {
 
 impl Into<Rgb> for Vec3 {
     fn into(self) -> Rgb {
-        let [red, green, blue] = self.0;
+        let [red, green, blue] = self.normed().0;
         let convert = |x| (x * 255.999) as u8;
         image::Rgb([convert(red), convert(green), convert(blue)])
     }
@@ -225,6 +226,15 @@ impl DivAssign<f64> for Vec3 {
     }
 }
 
+impl Sum<Vec3> for Vec3 {
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = Vec3>,
+    {
+        iter.fold(Vec3([0.0, 0.0, 0.0]), Add::add)
+    }
+}
+
 /// A ray in three-dimensional space, i.e., a set of the form
 /// {A + tb | t ∈ ℝ+}, where A is a [Point3] and b a [Vec3].
 #[derive(Clone, Copy)]
@@ -241,18 +251,18 @@ impl Ray {
     }
 
     /// Rgbs the point the ray hits.
-    pub fn color<I: Intersection>(&self, world: &I) -> super::Rgb {
+    pub fn color_vec<I: Intersection>(&self, world: &I) -> Vec3 {
         match world.intersection(self, 0.0, f64::INFINITY) {
             Some(IntersectionPoint { normal, .. }) => {
                 ((normal + Vec3([1.0, 1.0, 1.0])) * 0.5).into()
             }
             None => {
-                let unit = self.direction.unit();
+                let unit = self.direction.normed();
                 let t = 0.5 * (unit[1] + 1.0);
                 let blue = Vec3([0.5, 0.7, 1.0]);
                 let white = Vec3([1.0, 1.0, 1.0]);
 
-                (blue * t + white * (1.0 - t)).into()
+                blue * t + white * (1.0 - t)
             }
         }
     }
