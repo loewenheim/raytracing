@@ -7,7 +7,7 @@ pub mod geometry {
     };
 
     /// A trait for things that can be intersected by rays (such as spheres).
-    trait Intersection {
+    pub trait Intersection {
         /// Computes the intersection point of the given
         /// ray with this object.
         /// Returns None if the ray misses.
@@ -18,15 +18,15 @@ pub mod geometry {
     /// with an object: the actual point, the normal vector
     /// at that point, and the parameter of the ray.
     #[derive(Debug, Clone, Copy)]
-    struct IntersectionPoint {
-        point: Point3,
-        normal: Vec3,
-        t: f64,
-        face: Face,
+    pub struct IntersectionPoint {
+        pub point: Point3,
+        pub normal: Vec3,
+        pub t: f64,
+        pub face: Face,
     }
 
     #[derive(Debug, Clone, Copy)]
-    enum Face {
+    pub enum Face {
         Front,
         Back,
     }
@@ -243,13 +243,8 @@ pub mod geometry {
         }
 
         /// Rgbs the point the ray hits.
-        pub fn color(&self) -> super::Rgb {
-            let sphere = Sphere {
-                center: Point3([0.0, 0.0, -1.0]),
-                radius: 0.5,
-            };
-
-            match sphere.intersection(self, 0.0, f64::INFINITY) {
+        pub fn color<I: Intersection>(&self, world: &I) -> super::Rgb {
+            match world.intersection(self, 0.0, f64::INFINITY) {
                 Some(IntersectionPoint { normal, .. }) => {
                     ((normal + Vec3([1.0, 1.0, 1.0])) * 0.5).into()
                 }
@@ -310,14 +305,14 @@ pub mod geometry {
         }
     }
 
-    impl Intersection for Vec<& dyn Intersection> {
+    impl Intersection for Vec<Box<dyn Intersection>> {
         fn intersection(&self, ray: &Ray, tmin: f64, mut tmax: f64) -> Option<IntersectionPoint> {
             let mut intersection_point = None;
 
             for object in self.iter() {
-                if let  Some(new_ip) = object.intersection(ray, tmin, tmax) {
-                        intersection_point = Some(new_ip);
-                        tmax = new_ip.t;
+                if let Some(new_ip) = object.intersection(ray, tmin, tmax) {
+                    intersection_point = Some(new_ip);
+                    tmax = new_ip.t;
                 }
             }
 
