@@ -1,5 +1,6 @@
-
 use super::Rgb;
+use rand::distributions::{Distribution, Uniform};
+use rand::Rng;
 use std::iter::Sum;
 use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
@@ -24,6 +25,21 @@ pub struct IntersectionPoint {
     pub face: Face,
 }
 
+impl IntersectionPoint {
+    pub fn random_scatter<R: Rng + ?Sized>(&self, rng: &mut R) -> Ray {
+        let Self { point, normal, .. } = *self;
+        let sphere = Sphere {
+            center: point + normal,
+            radius: 1.0,
+        };
+        let target = sphere.sample(rng);
+        Ray {
+            origin: point,
+            direction: target - point,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum Face {
     Front,
@@ -33,6 +49,12 @@ pub enum Face {
 /// A point in three-dimensional space.
 #[derive(Clone, Copy, Debug)]
 pub struct Point3(pub [f64; 3]);
+
+impl Point3 {
+    pub fn dist(&self, other: &Point3) -> f64 {
+        (*self - *other).norm()
+    }
+}
 
 impl Deref for Point3 {
     type Target = [f64];
@@ -246,25 +268,8 @@ pub struct Ray {
 impl Ray {
     /// Returns the point origin + t * direction.
     pub fn at(&self, t: f64) -> Point3 {
-        assert!(t >= 0.0);
+        assert!(t > 0.0);
         self.origin + self.direction * t
-    }
-
-    /// Rgbs the point the ray hits.
-    pub fn color_vec<I: Intersection>(&self, world: &I) -> Vec3 {
-        match world.intersection(self, 0.0, f64::INFINITY) {
-            Some(IntersectionPoint { normal, .. }) => {
-                ((normal + Vec3([1.0, 1.0, 1.0])) * 0.5).into()
-            }
-            None => {
-                let unit = self.direction.normed();
-                let t = 0.5 * (unit[1] + 1.0);
-                let blue = Vec3([0.5, 0.7, 1.0]);
-                let white = Vec3([1.0, 1.0, 1.0]);
-
-                blue * t + white * (1.0 - t)
-            }
-        }
     }
 }
 
@@ -294,7 +299,7 @@ impl Intersection for Sphere {
             let t = (-half_b - discriminant.sqrt()) / a;
             if t > tmin && t < tmax {
                 let point = ray.at(t);
-                let normal = (point - *center) / *r;
+                let normal = (point - *center).normed();
                 let face = if dir.dot(normal) < 0.0 {
                     Face::Front
                 } else {
@@ -325,5 +330,39 @@ impl Intersection for Vec<Box<dyn Intersection>> {
         }
 
         intersection_point
+    }
+}
+
+impl Distribution<Point3> for Sphere {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Point3 {
+        let range = Uniform::from(-self.radius..self.radius);
+        let mut vec = Vec3([range.sample(rng), range.sample(rng), range.sample(rng)]);
+
+        while vec.norm() >= self.radius {
+            vec = Vec3([range.sample(rng), range.sample(rng), range.sample(rng)]);
+        }
+
+        self.center + vec
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn sphere_random_point() {
+        let mut rng = rand::thread_rng();
+
+        let sphere = Sphere {
+            center: Point3([1.0, 0.0, 0.0]),
+            radius: 2.0,
+        };
+
+        for _ in 0..20 {
+            let p = sphere.sample(&mut rng);
+
+            assert!(p.dist(&sphere.center) < sphere.radius);
+        }
     }
 }

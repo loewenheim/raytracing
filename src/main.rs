@@ -1,19 +1,20 @@
 use image::{ImageBuffer, RgbImage};
 use rand::distributions::{Distribution, Uniform};
-use rand::prelude::*;
 use raytracing::camera::*;
 use raytracing::geometry::{Intersection, Point3, Sphere, Vec3};
+use raytracing::light::color_vec;
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
     const IMAGE_WIDTH: u32 = 384;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
+    const SAMPLES_PER_PIXEL: usize = 100;
+    const MAX_DEPTH: usize = 50;
 
     let camera = Camera::default();
 
     let between = Uniform::from(0.0..1.0);
     let mut rng = rand::thread_rng();
-    let samples_per_pixel = 100;
 
     let mut world = Vec::new();
     world.push(Box::new(Sphere {
@@ -27,12 +28,12 @@ fn main() {
     }) as Box<dyn Intersection>);
 
     let image: RgbImage = ImageBuffer::from_fn(IMAGE_WIDTH, IMAGE_HEIGHT, |i, j| {
-        (0..samples_per_pixel)
+        (0..SAMPLES_PER_PIXEL)
             .map(|_| {
                 let u = (f64::from(i) + between.sample(&mut rng)) / f64::from(IMAGE_WIDTH - 1);
                 let v = (f64::from(IMAGE_HEIGHT - j) + between.sample(&mut rng))
                     / f64::from(IMAGE_HEIGHT - 1);
-                camera.ray(u, v).color_vec(&world)
+                color_vec(&camera.ray(u, v), &world, &mut rng, MAX_DEPTH)
             })
             .sum::<Vec3>()
             .into()

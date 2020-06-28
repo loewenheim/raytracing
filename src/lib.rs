@@ -2,6 +2,35 @@ pub type Rgb = image::Rgb<u8>;
 
 pub mod geometry;
 
+pub mod light {
+    use super::geometry::*;
+    use rand::Rng;
+
+    pub fn color_vec<I, R>(ray: &Ray, world: &I, rng: &mut R, depth: usize) -> Vec3
+    where
+        I: Intersection,
+        R: Rng + ?Sized,
+    {
+        if depth == 0 {
+            return Vec3::default();
+        }
+        match world.intersection(ray, 0.0, f64::INFINITY) {
+            Some(intersection_point) => {
+                let ray = intersection_point.random_scatter(rng);
+                color_vec(&ray, world, rng, depth - 1)
+            }
+            None => {
+                let unit = ray.direction.normed();
+                let t = 0.5 * (unit[1] + 1.0);
+                let blue = Vec3([0.5, 0.7, 1.0]);
+                let white = Vec3([1.0, 1.0, 1.0]);
+
+                blue * t + white * (1.0 - t)
+            }
+        }
+    }
+}
+
 pub mod camera {
     use super::geometry::*;
 
