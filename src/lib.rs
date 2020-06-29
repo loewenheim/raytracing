@@ -1,24 +1,161 @@
 pub mod geometry;
 
+use geometry::{Intersection, IntersectionPoint, Ray};
+use light::Color;
+use materials::Material;
+use rand::Rng;
+
+pub trait Reflective<R: Rng + ?Sized> {
+    fn reflect(&self, r: &Ray, tmin: f64, tmax: f64, rng: &mut R) -> Option<Scattered>;
+}
+
+pub struct MaterialObject<I, M, R>
+where
+    I: Intersection,
+    M: Material<R>,
+    R: Rng + ?Sized,
+{
+    shape: I,
+    material: M,
+    phantom: std::marker::PhantomData<R>,
+}
+
+impl<I, M, R> MaterialObject<I, M, R>
+where
+    I: Intersection,
+    M: Material<R>,
+    R: Rng + ?Sized,
+{
+    pub fn new(shape: I, material: M) -> Self {
+        Self {
+            shape,
+            material,
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+pub struct Scattered {
+    ray: Ray,
+    attenuation: Color,
+    intersection_point: IntersectionPoint,
+}
+
+impl<I, M, R> Reflective<R> for MaterialObject<I, M, R>
+where
+    I: Intersection,
+    M: Material<R>,
+    R: Rng + ?Sized,
+{
+    fn reflect(&self, r: &Ray, tmin: f64, tmax: f64, rng: &mut R) -> Option<Scattered> {
+        self.shape.intersection(r, tmin, tmax).as_ref().map(|p| {
+            let (attenuation, ray) = self.material.scatter(p, rng);
+            Scattered {
+                ray,
+                attenuation,
+                intersection_point: *p,
+            }
+        })
+    }
+}
+
+impl<R> Reflective<R> for Vec<Box<dyn Reflective<R>>>
+where
+    R: Rng + ?Sized,
+{
+    fn reflect(&self, ray: &Ray, tmin: f64, mut tmax: f64, rng: &mut R) -> Option<Scattered> {
+        let mut scattered = None;
+
+        for object in self.iter() {
+            if let Some(new_scattered) = object.reflect(ray, tmin, tmax, rng) {
+                tmax = new_scattered.intersection_point.t;
+                scattered = Some(new_scattered);
+            }
+        }
+
+        scattered
+    }
+}
+
+pub mod materials {
+    use super::geometry::{random_unit_vector, IntersectionPoint, Ray, Vec3};
+    use super::light::Color;
+    use rand::Rng;
+
+    pub trait Material<R: Rng + ?Sized> {
+        fn scatter(&self, p: &IntersectionPoint, rng: &mut R) -> (Color, Ray);
+    }
+
+    pub struct Lambertian {
+        pub albedo: Color,
+    }
+
+    impl<R: Rng + ?Sized> Material<R> for Lambertian {
+        fn scatter(
+            &self,
+            IntersectionPoint { normal, point, .. }: &IntersectionPoint,
+            rng: &mut R,
+        ) -> (Color, Ray) {
+            let direction = random_unit_vector(rng) + *normal;
+            let scattered = Ray {
+                origin: *point,
+                direction,
+            };
+
+            (self.albedo, scattered)
+        }
+    }
+
+    pub struct Metal {
+        pub albedo: Color,
+    }
+
+    impl<R: Rng + ?Sized> Material<R> for Metal {
+        fn scatter(
+            &self,
+            IntersectionPoint {
+                normal,
+                point,
+                in_vec,
+                ..
+            }: &IntersectionPoint,
+            _: &mut R,
+        ) -> (Color, Ray) {
+            let reflected = reflect(in_vec, normal);
+            (
+                self.albedo,
+                Ray {
+                    origin: *point,
+                    direction: reflected,
+                },
+            )
+        }
+    }
+
+    fn reflect(&v: &Vec3, &n: &Vec3) -> Vec3 {
+        v - n * 2.0 * v.dot(n)
+    }
+}
+
 pub mod light {
     use super::geometry::*;
+    use super::{Reflective, Scattered};
     use rand::Rng;
     use std::iter::Sum;
     use std::ops::{Deref, Mul};
 
     pub fn ray_color<I, R>(ray: &Ray, world: &I, rng: &mut R, depth: usize) -> Color
     where
-        I: Intersection,
+        I: Reflective<R>,
         R: Rng + ?Sized,
     {
         if depth == 0 {
             return Color::new(0.0, 0.0, 0.0);
         }
-        match world.intersection(ray, 0.001, f64::INFINITY) {
-            Some(intersection_point) => {
-                let ray = intersection_point.random_scatter(rng);
-                ray_color(&ray, world, rng, depth - 1) * 0.5
-            }
+        match world.reflect(ray, 0.001, f64::INFINITY, rng) {
+            Some(Scattered {
+                ray, attenuation, ..
+            }) => attenuation * ray_color(&ray, world, rng, depth - 1),
             None => {
                 let unit = ray.direction.normed();
                 let t = 0.5 * (unit[1] + 1.0);
@@ -96,6 +233,13 @@ pub mod light {
         type Output = Self;
         fn mul(self, scalar: f64) -> Self::Output {
             Self([self[0] * scalar, self[1] * scalar, self[2] * scalar])
+        }
+    }
+
+    impl Mul<Color> for Color {
+        type Output = Self;
+        fn mul(self, other: Self) -> Self::Output {
+            Self([self[0] * other[0], self[1] * other[1], self[2] * other[2]])
         }
     }
 

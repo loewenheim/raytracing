@@ -22,6 +22,7 @@ pub struct IntersectionPoint {
     pub normal: Vec3,
     pub t: f64,
     pub face: Face,
+    pub in_vec: Vec3,
 }
 
 impl IntersectionPoint {
@@ -301,26 +302,12 @@ impl Intersection for Sphere {
                     point,
                     normal,
                     face,
+                    in_vec: *dir,
                 })
             } else {
                 None
             }
         }
-    }
-}
-
-impl Intersection for Vec<Box<dyn Intersection>> {
-    fn intersection(&self, ray: &Ray, tmin: f64, mut tmax: f64) -> Option<IntersectionPoint> {
-        let mut intersection_point = None;
-
-        for object in self.iter() {
-            if let Some(new_ip) = object.intersection(ray, tmin, tmax) {
-                intersection_point = Some(new_ip);
-                tmax = new_ip.t;
-            }
-        }
-
-        intersection_point
     }
 }
 
@@ -351,6 +338,15 @@ impl Distribution<Point3> for On {
 
         self.0.center + vec
     }
+}
+
+pub fn random_unit_vector<R: Rng + ?Sized>(rng: &mut R) -> Vec3 {
+    let point = On(Sphere{
+        center: Point3::default(),
+        radius: 1.0,
+    }).sample(rng);
+
+    Vec3(point.0)
 }
 
 #[cfg(test)]
