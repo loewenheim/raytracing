@@ -14,7 +14,7 @@ pub mod light {
         if depth == 0 {
             return Color::new(0.0, 0.0, 0.0);
         }
-        match world.intersection(ray, 0.0, f64::INFINITY) {
+        match world.intersection(ray, 0.001, f64::INFINITY) {
             Some(intersection_point) => {
                 let ray = intersection_point.random_scatter(rng);
                 ray_color(&ray, world, rng, depth - 1) * 0.5
