@@ -31,7 +31,7 @@ impl IntersectionPoint {
             center: point + normal,
             radius: 1.0,
         };
-        let target = sphere.sample(rng);
+        let target = On(sphere).sample(rng);
         Ray {
             origin: point,
             direction: target - point,
@@ -324,16 +324,32 @@ impl Intersection for Vec<Box<dyn Intersection>> {
     }
 }
 
-impl Distribution<Point3> for Sphere {
+pub struct Inside(Sphere);
+
+impl Distribution<Point3> for Inside {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Point3 {
-        let range = Uniform::from(-self.radius..self.radius);
+        let range = Uniform::from(-self.0.radius..self.0.radius);
         let mut vec = Vec3([range.sample(rng), range.sample(rng), range.sample(rng)]);
 
-        while vec.norm() >= self.radius {
+        while vec.norm() >= self.0.radius {
             vec = Vec3([range.sample(rng), range.sample(rng), range.sample(rng)]);
         }
 
-        self.center + vec
+        self.0.center + vec
+    }
+}
+
+pub struct On(Sphere);
+
+impl Distribution<Point3> for On {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Point3 {
+        let phi = rng.gen_range(0.0, 2.0 * std::f64::consts::PI);
+        let z = rng.gen_range(-1.0, 1.0);
+        let r = 1.0 - z * z;
+
+        let vec = Vec3([r * phi.cos(), r * phi.sin(), z]) * self.0.radius;
+
+        self.0.center + vec
     }
 }
 
@@ -342,7 +358,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn sphere_random_point() {
+    fn inside_sphere_random_point() {
         let mut rng = rand::thread_rng();
 
         let sphere = Sphere {
@@ -351,9 +367,25 @@ mod test {
         };
 
         for _ in 0..20 {
-            let p = sphere.sample(&mut rng);
+            let p = Inside(sphere).sample(&mut rng);
 
             assert!(p.dist(&sphere.center) < sphere.radius);
+        }
+    }
+
+    #[test]
+    fn on_sphere_random_point() {
+        let mut rng = rand::thread_rng();
+
+        let sphere = Sphere {
+            center: Point3([1.0, 0.0, 0.0]),
+            radius: 2.0,
+        };
+
+        for _ in 0..20 {
+            let p = On(sphere).sample(&mut rng);
+
+            assert!((p.dist(&sphere.center) - sphere.radius).abs() / sphere.radius <= 0.15);
         }
     }
 }
