@@ -1,8 +1,8 @@
 use image::{ImageBuffer, RgbImage};
 use rand::distributions::{Distribution, Uniform};
 use raytracing::camera::*;
-use raytracing::geometry::{Intersection, Point3, Sphere, Vec3};
-use raytracing::light::color_vec;
+use raytracing::geometry::{Intersection, Point3, Sphere};
+use raytracing::light::*;
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
@@ -33,9 +33,10 @@ fn main() {
                 let u = (f64::from(i) + between.sample(&mut rng)) / f64::from(IMAGE_WIDTH - 1);
                 let v = (f64::from(IMAGE_HEIGHT - j) + between.sample(&mut rng))
                     / f64::from(IMAGE_HEIGHT - 1);
-                color_vec(&camera.ray(u, v), &world, &mut rng, MAX_DEPTH)
+                ray_color(&camera.ray(u, v), &world, &mut rng, MAX_DEPTH)
             })
-            .sum::<Vec3>()
+            .sum::<Color>()
+            .map(|c| c.sqrt())
             .into()
     });
 

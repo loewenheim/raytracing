@@ -1,4 +1,3 @@
-use super::Rgb;
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
 use std::iter::Sum;
@@ -128,14 +127,6 @@ impl DerefMut for Vec3 {
 impl Default for Vec3 {
     fn default() -> Self {
         Self([0.0, 0.0, 0.0])
-    }
-}
-
-impl Into<Rgb> for Vec3 {
-    fn into(self) -> Rgb {
-        let [red, green, blue] = self.normed().0;
-        let convert = |x| (x * 255.999) as u8;
-        image::Rgb([convert(red), convert(green), convert(blue)])
     }
 }
 

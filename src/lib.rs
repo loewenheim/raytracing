@@ -1,32 +1,109 @@
-pub type Rgb = image::Rgb<u8>;
-
 pub mod geometry;
 
 pub mod light {
     use super::geometry::*;
     use rand::Rng;
+    use std::iter::Sum;
+    use std::ops::{Deref, Mul};
 
-    pub fn color_vec<I, R>(ray: &Ray, world: &I, rng: &mut R, depth: usize) -> Vec3
+    pub fn ray_color<I, R>(ray: &Ray, world: &I, rng: &mut R, depth: usize) -> Color
     where
         I: Intersection,
         R: Rng + ?Sized,
     {
         if depth == 0 {
-            return Vec3::default();
+            return Color::new(0.0, 0.0, 0.0);
         }
         match world.intersection(ray, 0.0, f64::INFINITY) {
             Some(intersection_point) => {
                 let ray = intersection_point.random_scatter(rng);
-                color_vec(&ray, world, rng, depth - 1)
+                ray_color(&ray, world, rng, depth - 1) * 0.5
             }
             None => {
                 let unit = ray.direction.normed();
                 let t = 0.5 * (unit[1] + 1.0);
-                let blue = Vec3([0.5, 0.7, 1.0]);
-                let white = Vec3([1.0, 1.0, 1.0]);
+                let blue = Color::new(0.5, 0.7, 1.0);
+                let white = Color::new(1.0, 1.0, 1.0);
 
-                blue * t + white * (1.0 - t)
+                blue.mix(&white, t)
             }
+        }
+    }
+
+    pub type Rgb = image::Rgb<u8>;
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Color([f64; 3]);
+
+    impl Sum<Color> for Color {
+        fn sum<I: Iterator<Item = Color>>(iter: I) -> Self {
+            let mut count: usize = 0;
+            let mixed = iter.fold([0.0f64, 0.0, 0.0], |acc, c| {
+                count += 1;
+                [acc[0] + c.0[0], acc[1] + c.0[1], acc[2] + c.0[2]]
+            });
+
+            Color([
+                mixed[0] / count as f64,
+                mixed[1] / count as f64,
+                mixed[2] / count as f64,
+            ])
+        }
+    }
+
+    impl Color {
+        pub fn new(red: f64, green: f64, blue: f64) -> Self {
+            assert!(
+                red >= 0.0
+                    && red <= 1.0
+                    && green >= 0.0
+                    && green <= 1.0
+                    && blue >= 0.0
+                    && blue <= 1.0,
+                format!("{:?} is not a legal color vetcor", (red, green, blue))
+            );
+            Self([red, green, blue])
+        }
+
+        pub fn mix(&self, other: &Self, t: f64) -> Self {
+            assert!(t >= 0.0 && t <= 1.0, format!("{} is not in [0, 1]", t));
+
+            let [r1, g1, b1] = self.0;
+            let [r2, g2, b2] = other.0;
+
+            Self::new(
+                t * r1 + (1.0 - t) * r2,
+                t * g1 + (1.0 - t) * g2,
+                t * b1 + (1.0 - t) * b2,
+            )
+        }
+
+        pub fn map<F: FnMut(f64) -> f64>(self, mut f: F) -> Self {
+            let [r, g, b] = self.0;
+            Color::new(f(r), f(g), f(b))
+        }
+    }
+
+    impl Into<Rgb> for Color {
+        fn into(self) -> Rgb {
+            let [red, green, blue] = self.0;
+            let convert = |x| (x * 255.999) as u8;
+            image::Rgb([convert(red), convert(green), convert(blue)])
+        }
+    }
+
+    impl Mul<f64> for Color {
+        type Output = Self;
+        fn mul(self, scalar: f64) -> Self::Output {
+            Self([self[0] * scalar, self[1] * scalar, self[2] * scalar])
+        }
+    }
+
+    impl Deref for Color {
+        type Target = [f64; 3];
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
         }
     }
 }
