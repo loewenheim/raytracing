@@ -3,7 +3,7 @@ use rand::distributions::{Distribution, Uniform};
 use raytracing::camera::*;
 use raytracing::geometry::{ Point3, Sphere};
 use raytracing::light::*;
-use raytracing::materials::{Lambertian, Metal};
+use raytracing::materials::{Lambertian, Metal, Dielectric};
 use raytracing::{MaterialObject, Reflective};
 
 fn main() {
@@ -25,7 +25,7 @@ fn main() {
             radius: 0.5,
         },
         Lambertian {
-            albedo: Color::new(0.7, 0.3, 0.3),
+            albedo: Color::new(0.1, 0.2, 0.5),
         },
     );
 
@@ -46,6 +46,7 @@ fn main() {
         },
         Metal {
             albedo: Color::new(0.8, 0.6, 0.2),
+            fuzz: 0.0,
         },
     );
 
@@ -54,15 +55,28 @@ fn main() {
             center: Point3([-1.0, 0.0, -1.0]),
             radius: 0.5,
         },
-        Metal {
-            albedo: Color::new(0.8, 0.8, 0.8),
-        },
+
+        Dielectric {
+            ref_index: 1.5,
+        }
     );
+
+    //let sphere5 = MaterialObject::new(
+    //    Sphere {
+    //        center: Point3([-1.0, 0.0, -1.0]),
+    //        radius: -0.45,
+    //    },
+
+    //    Dielectric {
+    //        ref_index: 1.5,
+    //    }
+    //);
 
     world.push(Box::new(sphere1) as Box<dyn Reflective<_>>);
     world.push(Box::new(sphere2) as Box<dyn Reflective<_>>);
     world.push(Box::new(sphere3) as Box<dyn Reflective<_>>);
     world.push(Box::new(sphere4) as Box<dyn Reflective<_>>);
+    //world.push(Box::new(sphere5) as Box<dyn Reflective<_>>);
 
     let image: RgbImage = ImageBuffer::from_fn(IMAGE_WIDTH, IMAGE_HEIGHT, |i, j| {
         (0..SAMPLES_PER_PIXEL)
