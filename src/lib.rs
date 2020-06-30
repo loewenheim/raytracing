@@ -82,7 +82,6 @@ where
     }
 }
 
-
 pub mod light {
     use super::geometry::*;
     use super::{Reflective, Scattered};
@@ -217,27 +216,30 @@ pub mod camera {
 
     impl Camera {
         pub fn new(
-            look_from: Point3,
-            looking: Vec3,
-            vup: Vec3,
-            vfov: f64,
-            aspect_ratio: f64,
-            aperture: f64,
-            focus_dist: f64,
+            CameraOptions {
+                origin,
+                aperture,
+                direction,
+                vfov,
+                focus_distance,
+                aspect_ratio,
+                vup,
+            }: CameraOptions,
         ) -> Self {
             let h = (vfov / 2.0).to_radians().tan();
             let viewport_height = 2.0 * h;
             let viewport_width = viewport_height * aspect_ratio;
 
-            let onb = Onb::from23(vup, -looking);
+            let onb = Onb::from23(vup, -direction);
 
-            let horizontal = *onb[0] * viewport_width * focus_dist;
-            let vertical = *onb[1] * viewport_height * focus_dist;
-            let lower_left_corner = look_from - horizontal / 2.0 - vertical / 2.0 - *onb[2] * focus_dist;
+            let horizontal = *onb[0] * viewport_width * focus_distance;
+            let vertical = *onb[1] * viewport_height * focus_distance;
+            let lower_left_corner =
+                origin - horizontal / 2.0 - vertical / 2.0 - *onb[2] * focus_distance;
             let lens_radius = aperture / 2.0;
 
             Self {
-                origin: look_from,
+                origin,
                 horizontal,
                 vertical,
                 lower_left_corner,
@@ -256,5 +258,15 @@ pub mod camera {
                 (self.lower_left_corner + self.horizontal * s + self.vertical * t) - origin;
             Ray { origin, direction }
         }
+    }
+
+    pub struct CameraOptions {
+        pub origin: Point3,
+        pub aperture: f64,
+        pub focus_distance: f64,
+        pub aspect_ratio: f64,
+        pub direction: Vec3,
+        pub vfov: f64,
+        pub vup: Vec3,
     }
 }

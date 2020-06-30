@@ -1,7 +1,7 @@
 use image::{ImageBuffer, RgbImage};
 use rand::distributions::{Distribution, Uniform};
-use raytracing::camera::*;
-use raytracing::geometry::{Point3, Sphere, Vec3, Plane};
+use raytracing::camera::{Camera, CameraOptions};
+use raytracing::geometry::{Plane, Point3, Sphere, Vec3};
 use raytracing::light::*;
 use raytracing::materials::{Dielectric, Lambertian, Metal};
 use raytracing::{MaterialObject, Reflective};
@@ -13,22 +13,21 @@ fn main() {
     const SAMPLES_PER_PIXEL: usize = 100;
     const MAX_DEPTH: usize = 50;
 
-    let origin = Point3([3.0, 3.0, 2.0]);
+    let looking_from = Point3([3.0, 3.0, 2.0]);
     let looking_at = Point3([0.0, 0.0, -1.0]);
-    let looking_direction = looking_at - origin;
-    let vup = Vec3([0.0, 1.0, 0.0]);
-    let vfov = 20.0;
-    let focus_dist = looking_direction.norm();
-    let aperture = 0.0;
-    let camera = Camera::new(
-        origin,
-        looking_direction,
-        vup,
-        vfov,
-        ASPECT_RATIO,
-        aperture,
-        focus_dist,
-    );
+    let direction = looking_at - looking_from;
+
+    let cam_options = CameraOptions {
+        origin: looking_from,
+        direction,
+        vup: Vec3([0.0, 1.0, 0.0]),
+        vfov: 20.0,
+        focus_distance: direction.norm(),
+        aperture: 0.0,
+        aspect_ratio: ASPECT_RATIO,
+    };
+
+    let camera = Camera::new(cam_options);
 
     let between = Uniform::from(0.0..1.0);
     let mut rng = rand::thread_rng();
