@@ -1,10 +1,10 @@
 use image::{ImageBuffer, RgbImage};
 use rand::distributions::{Distribution, Uniform};
 use raytracing::camera::{Camera, CameraOptions};
-use raytracing::geometry::{Plane, Point3, Sphere, Vec3};
+use raytracing::geometry::{Point3, Shape, Vec3};
 use raytracing::light::*;
-use raytracing::materials::{Dielectric, Lambertian, Metal};
-use raytracing::{MaterialObject, Reflective};
+use raytracing::materials::Material;
+use raytracing::{Object, World};
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
@@ -31,74 +31,76 @@ fn main() {
 
     let between = Uniform::from(0.0..1.0);
     let mut rng = rand::thread_rng();
-    let mut world = Vec::new();
+    let mut world = World::new();
 
-    let ground = MaterialObject::new(
-        Plane {
+    let ground = Object {
+        shape: Shape::Plane {
             normal: Vec3([0.0, 1.0, 0.0]).normed(),
             offset: -0.5,
         },
-        Lambertian {
+        material: Material::Lambertian {
             albedo: Color::new(0.8, 0.0, 0.8),
         },
-    );
+    };
 
-    let ceiling = MaterialObject::new(
-        Plane {
+    let ceiling = Object {
+        shape: Shape::Plane {
             normal: Vec3([0.0, -1.0, 0.0]).normed(),
             offset: 2.0,
         },
-        Lambertian {
+        material: Material::Lambertian {
             albedo: Color::new(0.0, 0.0, 0.0),
         },
-    );
+    };
 
-    let sphere2 = MaterialObject::new(
-        Sphere {
+    let sphere2 = Object {
+        shape: Shape::Sphere {
             center: Point3([0.0, 0.0, -1.0]),
             radius: 0.5,
         },
-        Lambertian {
+        material: Material::Lambertian {
             albedo: Color::new(0.1, 0.2, 0.5),
         },
-    );
+    };
 
-    let sphere3 = MaterialObject::new(
-        Sphere {
+    let sphere3 = Object {
+        shape: Shape::Sphere {
             center: Point3([1.2, 0.0, -1.0]),
             radius: 0.5,
         },
-        Metal {
+        material: Material::Metal {
             albedo: Color::new(0.8, 0.6, 0.2),
             fuzz: 0.0,
         },
-    );
+    };
 
-    let sphere4 = MaterialObject::new(
-        Sphere {
+    let sphere4 = Object {
+        shape: Shape::Sphere {
             center: Point3([-1.2, 0.0, -1.0]),
             radius: 0.5,
         },
-        Dielectric { ref_index: 1.5 },
-    );
+        material: Material::Dielectric {
+            refraction_index: 1.5,
+        },
+    };
 
-    let sphere5 = MaterialObject::new(
-        Sphere {
+    let sphere5 = Object {
+        shape: Shape::Sphere {
             center: Point3([0.0, 0.5, -3.0]),
             radius: 1.0,
         },
-        Metal {
+        material: Material::Metal {
             albedo: Color::new(0.5, 0.5, 0.5),
             fuzz: 0.02,
         },
-    );
+    };
 
-    world.push(Box::new(ground) as Box<dyn Reflective<_>>);
-    world.push(Box::new(ceiling) as Box<dyn Reflective<_>>);
-    world.push(Box::new(sphere2) as Box<dyn Reflective<_>>);
-    world.push(Box::new(sphere3) as Box<dyn Reflective<_>>);
-    world.push(Box::new(sphere4) as Box<dyn Reflective<_>>);
-    world.push(Box::new(sphere5) as Box<dyn Reflective<_>>);
+    world.push(ground);
+    world.push(ceiling);
+    world.push(sphere2);
+    world.push(sphere3);
+    world.push(sphere4);
+    world.push(sphere5);
 
     let image: RgbImage = ImageBuffer::from_fn(IMAGE_WIDTH, IMAGE_HEIGHT, |i, j| {
         (0..SAMPLES_PER_PIXEL)

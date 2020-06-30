@@ -5,14 +5,69 @@ use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
 
-/// A trait for things that can be intersected by rays (such as spheres).
-pub trait Intersection {
-    /// Computes the intersection point of the given
-    /// ray with this object.
-    /// Returns None if the ray misses.
-    fn intersection(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint>;
+#[derive(Clone, Copy, Debug)]
+pub enum Shape {
+    Sphere { center: Point3, radius: f64 },
+
+    Plane { normal: UnitVec3, offset: f64 },
 }
 
+impl Shape {
+    pub fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint> {
+        match *self {
+            Shape::Sphere { center, radius } => {
+                let Ray {
+                    origin: o,
+                    direction: dir,
+                } = ray;
+                let oc = *o - center;
+                let a = dir.norm_squared();
+                let half_b = oc.dot(*dir);
+                let c = oc.norm_squared() - radius * radius;
+                let discriminant = half_b * half_b - a * c;
+
+                if discriminant < 0.0 {
+                    None
+                } else {
+                    let t = (-half_b - discriminant.sqrt()) / a;
+                    if t > tmin && t < tmax {
+                        let point = ray.at(t);
+                        let normal = (point - center).normed();
+                        Some(IntersectionPoint {
+                            t,
+                            point,
+                            normal,
+                            in_vec: *dir,
+                        })
+                    } else {
+                        None
+                    }
+                }
+            }
+
+            Shape::Plane { normal, offset } => {
+                if ray.direction.dot(*normal).abs() <= 1e-10 {
+                    None
+                } else {
+                    let u = Vec3(ray.origin.0);
+                    let t = (offset - u.dot(*normal)) / ray.direction.dot(*normal);
+
+                    if t >= tmin && t < tmax {
+                        let intersection_point = IntersectionPoint {
+                            t,
+                            in_vec: ray.direction,
+                            normal,
+                            point: ray.at(t),
+                        };
+                        Some(intersection_point)
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+    }
+}
 /// Contains information about the intersection of a ray
 /// with an object: the actual point, the normal vector
 /// at that point, and the parameter of the ray.
@@ -298,112 +353,50 @@ impl Ray {
     }
 }
 
-#[derive(Copy, Clone)]
-pub struct Plane {
-    pub normal: UnitVec3,
-    pub offset: f64,
-}
+pub struct InsideUnitSphere;
 
-impl Intersection for Plane {
-    fn intersection(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint> {
-        if ray.direction.dot(*self.normal) == 0.0 {
-            None
-        } else {
-            let u = Vec3(ray.origin.0);
-            let t = (self.offset - u.dot(*self.normal)) / ray.direction.dot(*self.normal);
-
-            if t >= tmin && t < tmax {
-                let intersection_point = IntersectionPoint {
-                    t,
-                    in_vec: ray.direction,
-                    normal: self.normal,
-                    point: ray.at(t),
-                };
-                Some(intersection_point)
-            } else {
-                None
-            }
-        }
-    }
-}
-
-/// A sphere in three-dimensional space.
-#[derive(Copy, Clone, Debug)]
-pub struct Sphere {
-    pub center: Point3,
-    pub radius: f64,
-}
-
-impl Intersection for Sphere {
-    fn intersection(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint> {
-        let Sphere { center, radius: r } = self;
-        let Ray {
-            origin: o,
-            direction: dir,
-        } = ray;
-        let oc = *o - *center;
-        let a = dir.norm_squared();
-        let half_b = oc.dot(*dir);
-        let c = oc.norm_squared() - r.powi(2);
-        let discriminant = half_b.powi(2) - a * c;
-
-        if discriminant < 0.0 {
-            None
-        } else {
-            let t = (-half_b - discriminant.sqrt()) / a;
-            if t > tmin && t < tmax {
-                let point = ray.at(t);
-                let normal = (point - *center).normed();
-                Some(IntersectionPoint {
-                    t,
-                    point,
-                    normal,
-                    in_vec: *dir,
-                })
-            } else {
-                None
-            }
-        }
-    }
-}
-
-pub struct Inside(Sphere);
-
-impl Distribution<Point3> for Inside {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Point3 {
-        let range = Uniform::from(-self.0.radius..self.0.radius);
+impl Distribution<Vec3> for InsideUnitSphere {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Vec3 {
+        let range = Uniform::from(-1.0..1.0);
         let mut vec = Vec3([range.sample(rng), range.sample(rng), range.sample(rng)]);
 
-        while vec.norm() >= self.0.radius {
+        while vec.norm_squared() >= 1.0 {
             vec = Vec3([range.sample(rng), range.sample(rng), range.sample(rng)]);
         }
 
-        self.0.center + vec
+        vec
     }
 }
 
-pub struct On(Sphere);
-
-impl Distribution<Point3> for On {
+impl Distribution<Point3> for InsideUnitSphere {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Point3 {
+        let p: Vec3 = self.sample(rng);
+        Point3(p.0)
+    }
+}
+pub struct OnUnitSphere;
+
+impl Distribution<UnitVec3> for OnUnitSphere {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> UnitVec3 {
         let phi = rng.gen_range(0.0, 2.0 * std::f64::consts::PI);
         let z = rng.gen_range(-1.0, 1.0);
         let r = 1.0 - z * z;
 
-        let vec = Vec3([r * phi.cos(), r * phi.sin(), z]) * self.0.radius;
+        let vec = Vec3([r * phi.cos(), r * phi.sin(), z]);
 
-        self.0.center + vec
+        vec.normed()
+    }
+}
+
+impl Distribution<Point3> for OnUnitSphere {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Point3 {
+        let p: UnitVec3 = self.sample(rng);
+        Point3((p.0).0)
     }
 }
 
 pub fn random_unit_vector<R: Rng + ?Sized>(rng: &mut R) -> UnitVec3 {
-    let point = On(Sphere {
-        center: Point3::default(),
-        radius: 1.0,
-    })
-    .sample(rng);
-
-    Vec3(point.0).normed()
+    OnUnitSphere.sample(rng)
 }
 
 pub struct UnitDisc;
@@ -426,34 +419,24 @@ mod test {
     use super::*;
 
     #[test]
-    fn inside_sphere_random_point() {
+    fn inside_unit_sphere() {
         let mut rng = rand::thread_rng();
 
-        let sphere = Sphere {
-            center: Point3([1.0, 0.0, 0.0]),
-            radius: 2.0,
-        };
-
         for _ in 0..20 {
-            let p = Inside(sphere).sample(&mut rng);
+            let v: Vec3 = InsideUnitSphere.sample(&mut rng);
 
-            assert!(p.dist(&sphere.center) < sphere.radius);
+            assert!(v.norm() < 1.0);
         }
     }
 
     #[test]
-    fn on_sphere_random_point() {
+    fn on_unit_sphere() {
         let mut rng = rand::thread_rng();
 
-        let sphere = Sphere {
-            center: Point3([1.0, 0.0, 0.0]),
-            radius: 2.0,
-        };
-
         for _ in 0..20 {
-            let p = On(sphere).sample(&mut rng);
+            let v: UnitVec3 = OnUnitSphere.sample(&mut rng);
 
-            assert!((p.dist(&sphere.center) - sphere.radius).abs() / sphere.radius <= 0.15);
+            assert!((v.norm() - 1.0).abs() <= 1e-10);
         }
     }
 }

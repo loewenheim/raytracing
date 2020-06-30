@@ -1,80 +1,72 @@
 pub mod geometry;
 pub mod materials;
 
-use geometry::{Intersection, Ray};
+use geometry::{Ray, Shape};
 use light::Color;
 use materials::Material;
 use rand::Rng;
 
-pub trait Reflective<R: Rng + ?Sized> {
-    fn reflect(&self, r: &Ray, tmin: f64, tmax: f64, rng: &mut R) -> Option<Scattered>;
+#[derive(Debug, Clone, Copy)]
+pub struct Object {
+    pub shape: Shape,
+    pub material: Material,
 }
 
-pub struct MaterialObject<I, M, R>
-where
-    I: Intersection,
-    M: Material<R>,
-    R: Rng + ?Sized,
-{
-    shape: I,
-    material: M,
-    phantom: std::marker::PhantomData<R>,
-}
-
-impl<I, M, R> MaterialObject<I, M, R>
-where
-    I: Intersection,
-    M: Material<R>,
-    R: Rng + ?Sized,
-{
-    pub fn new(shape: I, material: M) -> Self {
-        Self {
-            shape,
-            material,
-            phantom: std::marker::PhantomData,
-        }
+impl Object {
+    pub fn scatter<R: Rng + ?Sized>(
+        &self,
+        r: &Ray,
+        tmin: f64,
+        tmax: f64,
+        rng: &mut R,
+    ) -> Option<(f64, Option<Scattered>)> {
+        self.shape
+            .intersect(r, tmin, tmax)
+            .as_ref()
+            .map(|p| (p.t, self.material.scatter(p, rng)))
     }
 }
 
 pub struct Scattered {
-    ray: Ray,
-    attenuation: Color,
-    t: f64,
+    pub ray: Ray,
+    pub attenuation: Color,
 }
 
-impl<I, M, R> Reflective<R> for MaterialObject<I, M, R>
-where
-    I: Intersection,
-    M: Material<R>,
-    R: Rng + ?Sized,
-{
-    fn reflect(&self, r: &Ray, tmin: f64, tmax: f64, rng: &mut R) -> Option<Scattered> {
-        self.shape
-            .intersection(r, tmin, tmax)
-            .as_ref()
-            .and_then(|p| {
-                self.material
-                    .scatter(p, rng)
-                    .map(|(attenuation, ray)| Scattered {
-                        ray,
-                        attenuation,
-                        t: p.t,
-                    })
-            })
+#[derive(Debug, Clone)]
+pub struct World {
+    objects: Vec<Object>,
+}
+
+impl std::ops::Deref for World {
+    type Target = [Object];
+
+    fn deref(&self) -> &Self::Target {
+        &self.objects
     }
 }
 
-impl<R> Reflective<R> for Vec<Box<dyn Reflective<R>>>
-where
-    R: Rng + ?Sized,
-{
-    fn reflect(&self, ray: &Ray, tmin: f64, mut tmax: f64, rng: &mut R) -> Option<Scattered> {
+impl World {
+    pub fn new() -> Self {
+        Self {
+            objects: Vec::new(),
+        }
+    }
+    pub fn push(&mut self, object: Object) {
+        self.objects.push(object);
+    }
+    pub fn scatter<R: Rng + ?Sized>(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        mut tmax: f64,
+        rng: &mut R,
+    ) -> Option<Option<Scattered>> {
         let mut scattered = None;
 
         for object in self.iter() {
-            if let Some(new_scattered) = object.reflect(ray, tmin, tmax, rng) {
-                tmax = new_scattered.t;
-                scattered = Some(new_scattered);
+            if let Some((t_new, scattered_new)) = object.scatter(ray, tmin, tmax, rng) {
+                scattered = Some(scattered_new);
+                tmax = t_new;
             }
         }
 
@@ -84,30 +76,30 @@ where
 
 pub mod light {
     use super::geometry::*;
-    use super::{Reflective, Scattered};
+    use super::{Scattered, World};
     use rand::Rng;
     use std::iter::Sum;
     use std::ops::{Deref, Mul};
 
-    pub fn ray_color<I, R>(ray: &Ray, world: &I, rng: &mut R, depth: usize) -> Color
+    pub fn ray_color<R>(ray: &Ray, world: &World, rng: &mut R, depth: usize) -> Color
     where
-        I: Reflective<R>,
         R: Rng + ?Sized,
     {
         if depth == 0 {
             return Color::new(0.0, 0.0, 0.0);
         }
-        match world.reflect(ray, 0.001, f64::INFINITY, rng) {
-            Some(Scattered {
-                ray, attenuation, ..
-            }) => attenuation * ray_color(&ray, world, rng, depth - 1),
+        match world.scatter(ray, 0.001, f64::INFINITY, rng) {
             None => {
                 let unit = ray.direction.normed();
                 let t = 0.5 * (unit[1] + 1.0);
                 let blue = Color::new(0.5, 0.7, 1.0);
                 let white = Color::new(1.0, 1.0, 1.0);
-
                 blue.mix(&white, t)
+            }
+
+            Some(None) => Color::new(0.0, 0.0, 0.0),
+            Some(Some(Scattered { attenuation, ray })) => {
+                attenuation * ray_color(&ray, world, rng, depth - 1)
             }
         }
     }
