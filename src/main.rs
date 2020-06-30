@@ -13,16 +13,22 @@ fn main() {
     const SAMPLES_PER_PIXEL: usize = 100;
     const MAX_DEPTH: usize = 50;
 
-    let origin = Point3([-2.0, 2.0, 1.0]);
+    let origin = Point3([3.0, 3.0, 2.0]);
     let looking_at = Point3([0.0, 0.0, -1.0]);
+    let looking_direction = looking_at - origin;
+    let vup = Vec3([0.0, 1.0, 0.0]);
+    let vfov = 20.0;
+    let focus_dist = looking_direction.norm();
+    let aperture = 2.0;
     let camera = Camera::new(
         origin,
-        looking_at - origin,
-        Vec3([0.0, 1.0, 0.0]),
-        40.0,
+        looking_direction,
+        vup,
+        vfov,
         ASPECT_RATIO,
+        aperture,
+        focus_dist,
     );
-    eprintln!("Camera: {:?}", camera);
 
     let between = Uniform::from(0.0..1.0);
     let mut rng = rand::thread_rng();
@@ -90,7 +96,7 @@ fn main() {
                 let u = (f64::from(i) + between.sample(&mut rng)) / f64::from(IMAGE_WIDTH - 1);
                 let v = (f64::from(IMAGE_HEIGHT - j) + between.sample(&mut rng))
                     / f64::from(IMAGE_HEIGHT - 1);
-                ray_color(&camera.ray(u, v), &world, &mut rng, MAX_DEPTH)
+                ray_color(&camera.ray(u, v, &mut rng), &world, &mut rng, MAX_DEPTH)
             })
             .sum::<Color>()
             .map(|c| c.sqrt())

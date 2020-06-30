@@ -350,6 +350,21 @@ pub fn random_unit_vector<R: Rng + ?Sized>(rng: &mut R) -> Vec3 {
     Vec3(point.0)
 }
 
+pub struct UnitDisc;
+
+impl Distribution<Vec3> for UnitDisc {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Vec3 {
+        let range = Uniform::from(-1.0..1.0);
+        let mut p = Vec3([range.sample(rng), range.sample(rng), 0.0]);
+
+        while p.norm() >= 1.0 {
+            p = Vec3([range.sample(rng), range.sample(rng), 0.0]);
+        }
+
+        p
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

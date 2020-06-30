@@ -320,6 +320,8 @@ pub mod light {
 
 pub mod camera {
     use super::geometry::*;
+    use rand::distributions::Distribution;
+    use rand::Rng;
 
     #[derive(Debug, Clone, Copy)]
     pub struct Camera {
@@ -329,6 +331,10 @@ pub mod camera {
         lower_left_corner: Point3,
         vfov: f64,
         aspect_ratio: f64,
+        u: Vec3,
+        v: Vec3,
+        w: Vec3,
+        lens_radius: f64,
     }
 
     impl Camera {
@@ -338,6 +344,8 @@ pub mod camera {
             vup: Vec3,
             vfov: f64,
             aspect_ratio: f64,
+            aperture: f64,
+            focus_dist: f64,
         ) -> Self {
             let h = (vfov / 2.0).to_radians().tan();
             let viewport_height = 2.0 * h;
@@ -347,9 +355,10 @@ pub mod camera {
             let u = vup.cross(w).normed();
             let v = w.cross(u);
 
-            let horizontal = u * viewport_width;
-            let vertical = v * viewport_height;
-            let lower_left_corner = look_from - horizontal / 2.0 - vertical / 2.0 - w;
+            let horizontal = u * viewport_width * focus_dist;
+            let vertical = v * viewport_height * focus_dist;
+            let lower_left_corner = look_from - horizontal / 2.0 - vertical / 2.0 - w * focus_dist;
+            let lens_radius = aperture / 2.0;
 
             Self {
                 origin: look_from,
@@ -358,16 +367,20 @@ pub mod camera {
                 lower_left_corner,
                 vfov,
                 aspect_ratio,
+                u,
+                v,
+                w,
+                lens_radius,
             }
         }
 
-        pub fn ray(&self, u: f64, v: f64) -> Ray {
+        pub fn ray<R: Rng + ?Sized>(&self, s: f64, t: f64, rng: &mut R) -> Ray {
+            let rd = UnitDisc.sample(rng) * self.lens_radius;
+            let offset = self.u * rd[0] + self.v * rd[1];
+            let origin = self.origin + offset;
             let direction =
-                (self.lower_left_corner + self.horizontal * u + self.vertical * v) - self.origin;
-            Ray {
-                origin: self.origin,
-                direction,
-            }
+                (self.lower_left_corner + self.horizontal * s + self.vertical * t) - origin;
+            Ray { origin, direction }
         }
     }
 }
