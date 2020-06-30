@@ -19,23 +19,17 @@ pub trait Intersection {
 #[derive(Debug, Clone, Copy)]
 pub struct IntersectionPoint {
     pub point: Point3,
-    pub normal: Vec3,
+    pub normal: UnitVec3,
     pub t: f64,
-    pub face: Face,
     pub in_vec: Vec3,
 }
 
 impl IntersectionPoint {
-    pub fn random_scatter<R: Rng + ?Sized>(&self, rng: &mut R) -> Ray {
-        let Self { point, normal, .. } = *self;
-        let sphere = Sphere {
-            center: point + normal,
-            radius: 1.0,
-        };
-        let target = On(sphere).sample(rng);
-        Ray {
-            origin: point,
-            direction: target - point,
+    pub fn face(&self) -> Face {
+        if self.in_vec.dot(*self.normal) >= 0.0 {
+            Face::Front
+        } else {
+            Face::Back
         }
     }
 }
@@ -106,8 +100,8 @@ impl Vec3 {
     }
 
     /// Returns a unit vector with the same direction as this.
-    pub fn normed(&self) -> Self {
-        *self / self.norm()
+    pub fn normed(&self) -> UnitVec3 {
+        UnitVec3(*self / self.norm())
     }
 }
 
@@ -249,6 +243,45 @@ impl Sum<Vec3> for Vec3 {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct UnitVec3(Vec3);
+
+impl Deref for UnitVec3 {
+    type Target = Vec3;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Neg for UnitVec3 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Onb([UnitVec3; 3]);
+
+impl Onb {
+    pub fn from23(v: Vec3, w: Vec3) -> Self {
+        let w = w.normed();
+        let u = v.cross(*w).normed();
+        let v = w.cross(*u).normed();
+
+        Self([u, v, w])
+    }
+}
+
+impl Deref for Onb {
+    type Target = [UnitVec3; 3];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 /// A ray in three-dimensional space, i.e., a set of the form
 /// {A + tb | t ∈ ℝ+}, where A is a [Point3] and b a [Vec3].
 #[derive(Clone, Copy)]
@@ -262,6 +295,35 @@ impl Ray {
     pub fn at(&self, t: f64) -> Point3 {
         assert!(t > 0.0);
         self.origin + self.direction * t
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct Plane {
+    pub normal: UnitVec3,
+    pub offset: f64,
+}
+
+impl Intersection for Plane {
+    fn intersection(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint> {
+        if ray.direction.dot(*self.normal) == 0.0 {
+            None
+        } else {
+            let u = Vec3(ray.origin.0);
+            let t = (self.offset - u.dot(*self.normal)) / ray.direction.dot(*self.normal);
+
+            if t >= tmin && t < tmax {
+                let intersection_point = IntersectionPoint {
+                    t,
+                    in_vec: ray.direction,
+                    normal: self.normal,
+                    point: ray.at(t),
+                };
+                Some(intersection_point)
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -292,16 +354,10 @@ impl Intersection for Sphere {
             if t > tmin && t < tmax {
                 let point = ray.at(t);
                 let normal = (point - *center).normed();
-                let face = if dir.dot(normal) < 0.0 {
-                    Face::Front
-                } else {
-                    Face::Back
-                };
                 Some(IntersectionPoint {
                     t,
                     point,
                     normal,
-                    face,
                     in_vec: *dir,
                 })
             } else {
@@ -340,14 +396,14 @@ impl Distribution<Point3> for On {
     }
 }
 
-pub fn random_unit_vector<R: Rng + ?Sized>(rng: &mut R) -> Vec3 {
+pub fn random_unit_vector<R: Rng + ?Sized>(rng: &mut R) -> UnitVec3 {
     let point = On(Sphere {
         center: Point3::default(),
         radius: 1.0,
     })
     .sample(rng);
 
-    Vec3(point.0)
+    Vec3(point.0).normed()
 }
 
 pub struct UnitDisc;

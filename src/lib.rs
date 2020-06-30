@@ -1,6 +1,7 @@
 pub mod geometry;
+pub mod materials;
 
-use geometry::{Intersection, IntersectionPoint, Ray};
+use geometry::{Intersection, Ray};
 use light::Color;
 use materials::Material;
 use rand::Rng;
@@ -38,7 +39,7 @@ where
 pub struct Scattered {
     ray: Ray,
     attenuation: Color,
-    intersection_point: IntersectionPoint,
+    t: f64,
 }
 
 impl<I, M, R> Reflective<R> for MaterialObject<I, M, R>
@@ -57,7 +58,7 @@ where
                     .map(|(attenuation, ray)| Scattered {
                         ray,
                         attenuation,
-                        intersection_point: *p,
+                        t: p.t,
                     })
             })
     }
@@ -72,7 +73,7 @@ where
 
         for object in self.iter() {
             if let Some(new_scattered) = object.reflect(ray, tmin, tmax, rng) {
-                tmax = new_scattered.intersection_point.t;
+                tmax = new_scattered.t;
                 scattered = Some(new_scattered);
             }
         }
@@ -210,9 +211,7 @@ pub mod camera {
         lower_left_corner: Point3,
         vfov: f64,
         aspect_ratio: f64,
-        u: Vec3,
-        v: Vec3,
-        w: Vec3,
+        onb: Onb,
         lens_radius: f64,
     }
 
@@ -230,13 +229,11 @@ pub mod camera {
             let viewport_height = 2.0 * h;
             let viewport_width = viewport_height * aspect_ratio;
 
-            let w = (-looking).normed();
-            let u = vup.cross(w).normed();
-            let v = w.cross(u);
+            let onb = Onb::from23(vup, -looking);
 
-            let horizontal = u * viewport_width * focus_dist;
-            let vertical = v * viewport_height * focus_dist;
-            let lower_left_corner = look_from - horizontal / 2.0 - vertical / 2.0 - w * focus_dist;
+            let horizontal = *onb[0] * viewport_width * focus_dist;
+            let vertical = *onb[1] * viewport_height * focus_dist;
+            let lower_left_corner = look_from - horizontal / 2.0 - vertical / 2.0 - *onb[2] * focus_dist;
             let lens_radius = aperture / 2.0;
 
             Self {
@@ -246,16 +243,14 @@ pub mod camera {
                 lower_left_corner,
                 vfov,
                 aspect_ratio,
-                u,
-                v,
-                w,
+                onb,
                 lens_radius,
             }
         }
 
         pub fn ray<R: Rng + ?Sized>(&self, s: f64, t: f64, rng: &mut R) -> Ray {
             let rd = UnitDisc.sample(rng) * self.lens_radius;
-            let offset = self.u * rd[0] + self.v * rd[1];
+            let offset = *self.onb[0] * rd[0] + *self.onb[1] * rd[1];
             let origin = self.origin + offset;
             let direction =
                 (self.lower_left_corner + self.horizontal * s + self.vertical * t) - origin;

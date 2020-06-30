@@ -1,7 +1,7 @@
 use image::{ImageBuffer, RgbImage};
 use rand::distributions::{Distribution, Uniform};
 use raytracing::camera::*;
-use raytracing::geometry::{Point3, Sphere, Vec3};
+use raytracing::geometry::{Point3, Sphere, Vec3, Plane};
 use raytracing::light::*;
 use raytracing::materials::{Dielectric, Lambertian, Metal};
 use raytracing::{MaterialObject, Reflective};
@@ -19,7 +19,7 @@ fn main() {
     let vup = Vec3([0.0, 1.0, 0.0]);
     let vfov = 20.0;
     let focus_dist = looking_direction.norm();
-    let aperture = 2.0;
+    let aperture = 0.0;
     let camera = Camera::new(
         origin,
         looking_direction,
@@ -34,13 +34,23 @@ fn main() {
     let mut rng = rand::thread_rng();
     let mut world = Vec::new();
 
-    let sphere1 = MaterialObject::new(
-        Sphere {
-            center: Point3([0.0, -100.5, -1.0]),
-            radius: 100.0,
+    let ground = MaterialObject::new(
+        Plane {
+            normal: Vec3([0.0, 1.0, 0.0]).normed(),
+            offset: -0.5,
         },
         Lambertian {
             albedo: Color::new(0.8, 0.0, 0.8),
+        },
+    );
+
+    let ceiling = MaterialObject::new(
+        Plane {
+            normal: Vec3([0.0, -1.0, 0.0]).normed(),
+            offset: 2.0,
+        },
+        Lambertian {
+            albedo: Color::new(0.0, 0.0, 0.0),
         },
     );
 
@@ -56,7 +66,7 @@ fn main() {
 
     let sphere3 = MaterialObject::new(
         Sphere {
-            center: Point3([1.0, 0.0, -1.0]),
+            center: Point3([1.2, 0.0, -1.0]),
             radius: 0.5,
         },
         Metal {
@@ -67,7 +77,7 @@ fn main() {
 
     let sphere4 = MaterialObject::new(
         Sphere {
-            center: Point3([-1.0, 0.0, -1.0]),
+            center: Point3([-1.2, 0.0, -1.0]),
             radius: 0.5,
         },
         Dielectric { ref_index: 1.5 },
@@ -84,7 +94,8 @@ fn main() {
         },
     );
 
-    world.push(Box::new(sphere1) as Box<dyn Reflective<_>>);
+    world.push(Box::new(ground) as Box<dyn Reflective<_>>);
+    world.push(Box::new(ceiling) as Box<dyn Reflective<_>>);
     world.push(Box::new(sphere2) as Box<dyn Reflective<_>>);
     world.push(Box::new(sphere3) as Box<dyn Reflective<_>>);
     world.push(Box::new(sphere4) as Box<dyn Reflective<_>>);
