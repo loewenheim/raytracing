@@ -48,13 +48,13 @@ where
     R: Rng + ?Sized,
 {
     fn reflect(&self, r: &Ray, tmin: f64, tmax: f64, rng: &mut R) -> Option<Scattered> {
-        self.shape.intersection(r, tmin, tmax).as_ref().map(|p| {
-            let (attenuation, ray) = self.material.scatter(p, rng);
+        self.shape.intersection(r, tmin, tmax).as_ref().and_then(|p| {
+            self.material.scatter(p, rng).map(|(attenuation, ray)|
             Scattered {
                 ray,
                 attenuation,
                 intersection_point: *p,
-            }
+            })
         })
     }
 }
@@ -83,7 +83,7 @@ pub mod materials {
     use rand::Rng;
 
     pub trait Material<R: Rng + ?Sized> {
-        fn scatter(&self, p: &IntersectionPoint, rng: &mut R) -> (Color, Ray);
+        fn scatter(&self, p: &IntersectionPoint, rng: &mut R) -> Option<(Color, Ray)>;
     }
 
     pub struct Lambertian {
@@ -95,14 +95,14 @@ pub mod materials {
             &self,
             IntersectionPoint { normal, point, .. }: &IntersectionPoint,
             rng: &mut R,
-        ) -> (Color, Ray) {
+        ) -> Option<(Color, Ray)> {
             let direction = random_unit_vector(rng) + *normal;
             let scattered = Ray {
                 origin: *point,
                 direction,
             };
 
-            (self.albedo, scattered)
+            Some((self.albedo, scattered))
         }
     }
 
@@ -120,15 +120,15 @@ pub mod materials {
                 ..
             }: &IntersectionPoint,
             _: &mut R,
-        ) -> (Color, Ray) {
+        ) -> Option<(Color, Ray)> {
             let reflected = reflect(in_vec, normal);
-            (
+            Some((
                 self.albedo,
                 Ray {
                     origin: *point,
                     direction: reflected,
                 },
-            )
+            ))
         }
     }
 
