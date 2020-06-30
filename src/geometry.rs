@@ -341,10 +341,11 @@ impl Distribution<Point3> for On {
 }
 
 pub fn random_unit_vector<R: Rng + ?Sized>(rng: &mut R) -> Vec3 {
-    let point = On(Sphere{
+    let point = On(Sphere {
         center: Point3::default(),
         radius: 1.0,
-    }).sample(rng);
+    })
+    .sample(rng);
 
     Vec3(point.0)
 }

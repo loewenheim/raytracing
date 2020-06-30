@@ -48,14 +48,18 @@ where
     R: Rng + ?Sized,
 {
     fn reflect(&self, r: &Ray, tmin: f64, tmax: f64, rng: &mut R) -> Option<Scattered> {
-        self.shape.intersection(r, tmin, tmax).as_ref().and_then(|p| {
-            self.material.scatter(p, rng).map(|(attenuation, ray)|
-            Scattered {
-                ray,
-                attenuation,
-                intersection_point: *p,
+        self.shape
+            .intersection(r, tmin, tmax)
+            .as_ref()
+            .and_then(|p| {
+                self.material
+                    .scatter(p, rng)
+                    .map(|(attenuation, ray)| Scattered {
+                        ray,
+                        attenuation,
+                        intersection_point: *p,
+                    })
             })
-        })
     }
 }
 
@@ -78,7 +82,7 @@ where
 }
 
 pub mod materials {
-    use super::geometry::{random_unit_vector, IntersectionPoint, Ray, Vec3, Face};
+    use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, Vec3};
     use super::light::Color;
     use rand::Rng;
 
@@ -125,13 +129,13 @@ pub mod materials {
             let reflected = reflect(in_vec, normal);
             let scattered = reflected + random_unit_vector(rng) * self.fuzz;
             if scattered.dot(*normal) >= 0.0 {
-            Some((
-                self.albedo,
-                Ray {
-                    origin: *point,
-                    direction: scattered,
-                },
-            ))
+                Some((
+                    self.albedo,
+                    Ray {
+                        origin: *point,
+                        direction: scattered,
+                    },
+                ))
             } else {
                 None
             }
@@ -155,7 +159,7 @@ pub mod materials {
             rng: &mut R,
         ) -> Option<(Color, Ray)> {
             let eta_ratio = match face {
-                Face::Front => 1.0/self.ref_index,
+                Face::Front => 1.0 / self.ref_index,
                 Face::Back => self.ref_index,
             };
 
@@ -163,16 +167,21 @@ pub mod materials {
             let cos_theta = -in_vec_unit.dot(*normal).min(1.0);
             let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
 
-            let direction = if eta_ratio * sin_theta > 1.0 || rng.gen::<f64>() < schlick(cos_theta, eta_ratio) {
+            let direction = if eta_ratio * sin_theta > 1.0
+                || rng.gen::<f64>() < schlick(cos_theta, eta_ratio)
+            {
                 reflect(&in_vec_unit, normal)
             } else {
                 refract(&in_vec_unit, normal, eta_ratio)
             };
 
-            Some((Color::new(1.0, 1.0, 1.0), Ray {
-                origin: *point,
-                direction,
-            }))
+            Some((
+                Color::new(1.0, 1.0, 1.0),
+                Ray {
+                    origin: *point,
+                    direction,
+                },
+            ))
         }
     }
 
@@ -318,9 +327,40 @@ pub mod camera {
         horizontal: Vec3,
         vertical: Vec3,
         lower_left_corner: Point3,
+        vfov: f64,
+        aspect_ratio: f64,
     }
 
     impl Camera {
+        pub fn new(
+            look_from: Point3,
+            looking: Vec3,
+            vup: Vec3,
+            vfov: f64,
+            aspect_ratio: f64,
+        ) -> Self {
+            let h = (vfov / 2.0).to_radians().tan();
+            let viewport_height = 2.0 * h;
+            let viewport_width = viewport_height * aspect_ratio;
+
+            let w = (-looking).normed();
+            let u = vup.cross(w).normed();
+            let v = w.cross(u);
+
+            let horizontal = u * viewport_width;
+            let vertical = v * viewport_height;
+            let lower_left_corner = look_from - horizontal / 2.0 - vertical / 2.0 - w;
+
+            Self {
+                origin: look_from,
+                horizontal,
+                vertical,
+                lower_left_corner,
+                vfov,
+                aspect_ratio,
+            }
+        }
+
         pub fn ray(&self, u: f64, v: f64) -> Ray {
             let direction =
                 (self.lower_left_corner + self.horizontal * u + self.vertical * v) - self.origin;
@@ -328,92 +368,6 @@ pub mod camera {
                 origin: self.origin,
                 direction,
             }
-        }
-    }
-
-    impl Default for Camera {
-        fn default() -> Self {
-            camera(1.0)
-                .aspect_ratio(16.0 / 9.0)
-                .viewport_height(2.0)
-                .build()
-        }
-    }
-
-    pub struct CameraBuilder {
-        aspect_ratio: Option<f64>,
-        viewport_height: Option<f64>,
-        viewport_width: Option<f64>,
-        focal_length: f64,
-    }
-
-    impl CameraBuilder {
-        pub fn aspect_ratio(mut self, aspect_ratio: f64) -> Self {
-            match (self.viewport_height, self.viewport_width) {
-                (Some(_), Some(_)) => panic!("Viewport height and width are already set"),
-                (Some(h), None) => self.viewport_width = Some(h * aspect_ratio),
-                (None, Some(w)) => self.viewport_height = Some(w / aspect_ratio),
-                (None, None) => {}
-            }
-            self.aspect_ratio = Some(aspect_ratio);
-            self
-        }
-
-        pub fn viewport_height(mut self, viewport_height: f64) -> Self {
-            match (self.aspect_ratio, self.viewport_width) {
-                (Some(_), Some(_)) => panic!("Aspect ratio and viewport width are already set"),
-                (Some(ar), None) => self.viewport_width = Some(viewport_height * ar),
-                (None, Some(w)) => self.aspect_ratio = Some(w / viewport_height),
-                (None, None) => {}
-            }
-            self.viewport_height = Some(viewport_height);
-            self
-        }
-
-        pub fn viewport_width(mut self, viewport_width: f64) -> Self {
-            match (self.aspect_ratio, self.viewport_height) {
-                (Some(_), Some(_)) => panic!("Aspect ratio and viewport height are already set"),
-                (Some(ar), None) => self.viewport_height = Some(viewport_width / ar),
-                (None, Some(h)) => self.aspect_ratio = Some(viewport_width / h),
-                (None, None) => {}
-            }
-            self.viewport_width = Some(viewport_width);
-            self
-        }
-
-        pub fn build(self) -> Camera {
-            let origin = Point3::default();
-            let horizontal = Vec3([
-                self.viewport_width.expect(
-                    "You need to set two of viewport height, viewport width, and aspect ratio",
-                ),
-                0.0,
-                0.0,
-            ]);
-            let vertical = Vec3([
-                0.0,
-                self.viewport_height.expect(
-                    "You need to set two of viewport height, viewport width, and aspect ratio",
-                ),
-                0.0,
-            ]);
-            let lower_left_corner =
-                origin - horizontal / 2.0 - vertical / 2.0 - Vec3([0.0, 0.0, self.focal_length]);
-
-            Camera {
-                origin,
-                horizontal,
-                vertical,
-                lower_left_corner,
-            }
-        }
-    }
-    pub fn camera(focal_length: f64) -> CameraBuilder {
-        CameraBuilder {
-            aspect_ratio: None,
-            viewport_height: None,
-            viewport_width: None,
-            focal_length,
         }
     }
 }
