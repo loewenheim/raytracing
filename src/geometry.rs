@@ -81,7 +81,7 @@ pub struct IntersectionPoint {
 
 impl IntersectionPoint {
     pub fn face(&self) -> Face {
-        if self.in_vec.dot(*self.normal) >= 0.0 {
+        if self.in_vec.dot(*self.normal) < 0.0 {
             Face::Front
         } else {
             Face::Back
