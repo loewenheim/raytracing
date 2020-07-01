@@ -1,10 +1,61 @@
 pub mod geometry;
 pub mod materials;
 
-use geometry::{Ray, Shape};
+use geometry::{Point3, Ray, Shape, Vec3};
 use light::Color;
 use materials::Material;
 use rand::Rng;
+
+pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> World {
+    let mut world = World::new();
+
+    let ground = Object {
+        shape: Shape::Plane {
+            normal: Vec3([0.0, 1.0, 0.0]).normed(),
+            offset: 0.0,
+        },
+
+        material: Material::Lambertian {
+            albedo: Color::new(0.5, 0.5, 0.5),
+        },
+    };
+
+    world.push(ground);
+
+    for a in -11..11 {
+        for b in -11..11 {
+            let center = Point3([
+                a as f64 + 0.9 * rng.gen::<f64>(),
+                0.2,
+                b as f64 + 0.9 * rng.gen::<f64>(),
+            ]);
+
+            if center.dist(&Point3([4.0, 0.2, 0.0])) > 0.9 {
+                let shape = Shape::Sphere {
+                    center,
+                    radius: 0.2,
+                };
+
+                let roll: f64 = rng.gen();
+                let material = if roll < 0.8 {
+                    let albedo = Color::random(rng, 0.0..1.0) + Color::random(rng, 0.0..1.0);
+                    Material::Lambertian { albedo }
+                } else if roll < 0.95 {
+                    let albedo = Color::random(rng, 0.5..1.0);
+                    let fuzz = rng.gen_range(0.0, 0.5);
+
+                    Material::Metal { albedo, fuzz }
+                } else {
+                    Material::glass()
+                };
+
+                world.push(Object { shape, material })
+            }
+        }
+    }
+
+    world
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Object {
@@ -77,9 +128,12 @@ impl World {
 pub mod light {
     use super::geometry::*;
     use super::{Scattered, World};
-    use rand::Rng;
+    use rand::{
+        distributions::{Distribution, Uniform},
+        Rng,
+    };
     use std::iter::Sum;
-    use std::ops::{Deref, Mul};
+    use std::ops::{Add, Deref, Mul};
 
     pub fn ray_color<R>(ray: &Ray, world: &World, rng: &mut R, depth: usize) -> Color
     where
@@ -109,19 +163,11 @@ pub mod light {
     #[derive(Debug, Clone, Copy)]
     pub struct Color([f64; 3]);
 
-    impl Sum<Color> for Color {
-        fn sum<I: Iterator<Item = Color>>(iter: I) -> Self {
-            let mut count: usize = 0;
-            let mixed = iter.fold([0.0f64, 0.0, 0.0], |acc, c| {
-                count += 1;
+    impl Sum<Color> for Vec3 {
+        fn sum<I: Iterator<Item = Color>>(iter: I) -> Vec3 {
+            Vec3(iter.fold([0.0f64, 0.0, 0.0], |acc, c| {
                 [acc[0] + c.0[0], acc[1] + c.0[1], acc[2] + c.0[2]]
-            });
-
-            Color([
-                mixed[0] / count as f64,
-                mixed[1] / count as f64,
-                mixed[2] / count as f64,
-            ])
+            }))
         }
     }
 
@@ -134,9 +180,14 @@ pub mod light {
                     && green <= 1.0
                     && blue >= 0.0
                     && blue <= 1.0,
-                format!("{:?} is not a legal color vetcor", (red, green, blue))
+                format!("{:?} is not a legal color vector", (red, green, blue))
             );
             Self([red, green, blue])
+        }
+
+        pub fn random<R: Rng + ?Sized>(rng: &mut R, range: std::ops::Range<f64>) -> Self {
+            let range = Uniform::from(range);
+            Self([range.sample(rng), range.sample(rng), range.sample(rng)])
         }
 
         pub fn mix(&self, other: &Self, t: f64) -> Self {
@@ -158,11 +209,11 @@ pub mod light {
         }
     }
 
-    impl Into<Rgb> for Color {
-        fn into(self) -> Rgb {
+    impl Into<[u8; 3]> for Color {
+        fn into(self) -> [u8; 3] {
             let [red, green, blue] = self.0;
             let convert = |x| (x * 255.999) as u8;
-            image::Rgb([convert(red), convert(green), convert(blue)])
+            [convert(red), convert(green), convert(blue)]
         }
     }
 
@@ -180,11 +231,36 @@ pub mod light {
         }
     }
 
+    impl Add<Color> for Color {
+        type Output = Self;
+        fn add(self, other: Self) -> Self::Output {
+            Self([
+                0.5 * (self[0] + other[0]),
+                0.5 * (self[1] + other[1]),
+                0.5 * (self[2] + other[2]),
+            ])
+        }
+    }
+
     impl Deref for Color {
         type Target = [f64; 3];
 
         fn deref(&self) -> &Self::Target {
             &self.0
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        #[test]
+        fn random_color() {
+            let mut rng = rand::thread_rng();
+
+            for _ in 0..20 {
+                let _color = Color::random(&mut rng, 0.0..1.0);
+            }
         }
     }
 }

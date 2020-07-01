@@ -1,4 +1,4 @@
-use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, Vec3};
+use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3, Vec3};
 use super::light::Color;
 use super::Scattered;
 use rand::Rng;
@@ -13,6 +13,12 @@ pub enum Material {
 }
 
 impl Material {
+    pub fn glass() -> Self {
+        Material::Dielectric {
+            refraction_index: 1.5,
+        }
+    }
+
     pub fn scatter<R: Rng + ?Sized>(
         &self,
         p: &IntersectionPoint,
@@ -33,8 +39,8 @@ impl Material {
             }
 
             Material::Metal { albedo, fuzz } => {
-                let reflected = reflect(&p.in_vec, &*p.normal);
-                let scattered = reflected + *random_unit_vector(rng) * fuzz;
+                let reflected = reflect(&p.in_vec, &p.normal);
+                let scattered = *reflected + *random_unit_vector(rng) * fuzz;
                 if scattered.dot(*p.normal) >= 0.0 {
                     Some(Scattered {
                         attenuation: albedo,
@@ -61,7 +67,7 @@ impl Material {
                 let direction = if eta_ratio * sin_theta > 1.0
                     || rng.gen::<f64>() < schlick(cos_theta, eta_ratio)
                 {
-                    reflect(&in_vec_unit, &p.normal)
+                    *reflect(&in_vec_unit, &p.normal)
                 } else {
                     refract(&in_vec_unit, &p.normal, eta_ratio)
                 };
@@ -78,14 +84,14 @@ impl Material {
     }
 }
 
-fn reflect(&v: &Vec3, &n: &Vec3) -> Vec3 {
-    v - n * 2.0 * v.dot(n)
+fn reflect(&v: &UnitVec3, &n: &UnitVec3) -> UnitVec3 {
+    (*v - *n * 2.0 * (*v).dot(*n)).normed()
 }
 
-fn refract(&v: &Vec3, &n: &Vec3, eta_ratio: f64) -> Vec3 {
-    let cos_theta = -v.dot(n);
-    let out_par = (v + n * cos_theta) * eta_ratio;
-    let out_perp = n * -((1.0 - out_par.norm_squared()).sqrt());
+fn refract(&v: &UnitVec3, &n: &UnitVec3, eta_ratio: f64) -> Vec3 {
+    let cos_theta = -v.dot(*n);
+    let out_par = (*v + *n * cos_theta) * eta_ratio;
+    let out_perp = *n * -((1.0 - out_par.norm_squared()).sqrt());
     out_par + out_perp
 }
 

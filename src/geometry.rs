@@ -37,7 +37,7 @@ impl Shape {
                             t,
                             point,
                             normal,
-                            in_vec: *dir,
+                            in_vec: dir.normed(),
                         })
                     } else {
                         None
@@ -55,7 +55,7 @@ impl Shape {
                     if t >= tmin && t < tmax {
                         let intersection_point = IntersectionPoint {
                             t,
-                            in_vec: ray.direction,
+                            in_vec: ray.direction.normed(),
                             normal,
                             point: ray.at(t),
                         };
@@ -76,7 +76,7 @@ pub struct IntersectionPoint {
     pub point: Point3,
     pub normal: UnitVec3,
     pub t: f64,
-    pub in_vec: Vec3,
+    pub in_vec: UnitVec3,
 }
 
 impl IntersectionPoint {
