@@ -5,17 +5,26 @@ use rand::Rng;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Material {
-    Lambertian { albedo: Color },
+    Lambertian {
+        albedo: Color,
+    },
 
-    Metal { albedo: Color, fuzz: f64 },
+    Metal {
+        albedo: Color,
+        fuzz: f64,
+    },
 
-    Dielectric { refraction_index: f64 },
+    Dielectric {
+        albedo: Color,
+        refraction_index: f64,
+    },
 }
 
 impl Material {
     pub fn glass() -> Self {
         Material::Dielectric {
             refraction_index: 1.5,
+            albedo: Color::new(1.0, 1.0, 1.0),
         }
     }
 
@@ -54,7 +63,10 @@ impl Material {
                 }
             }
 
-            Material::Dielectric { refraction_index } => {
+            Material::Dielectric {
+                albedo,
+                refraction_index,
+            } => {
                 let eta_ratio = match p.face() {
                     Face::Front => 1.0 / refraction_index,
                     Face::Back => refraction_index,
@@ -73,7 +85,7 @@ impl Material {
                 };
 
                 Some(Scattered {
-                    attenuation: Color::new(1.0, 1.0, 1.0),
+                    attenuation: albedo,
                     ray: Ray {
                         origin: p.point,
                         direction,
