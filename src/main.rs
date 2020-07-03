@@ -4,11 +4,11 @@ use raytracing::camera::{Camera, CameraOptions};
 use raytracing::color::Color;
 use raytracing::geometry::{Point3, Shape, Vec3};
 use raytracing::materials::Material;
-use raytracing::{pixel, random_world, BvhNode, Object};
+use raytracing::{pixel, random_world, BvhNode, Object, Texture};
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
-    const IMAGE_WIDTH: u32 = 1280;
+    const IMAGE_WIDTH: u32 = 640;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
     const MAX_DEPTH: usize = 50;
@@ -49,7 +49,7 @@ fn main() {
         },
 
         material: Material::Lambertian {
-            albedo: Color::new(0.4, 0.2, 0.1),
+            albedo: Texture::SolidColor(Color::new(0.4, 0.2, 0.1)),
         },
     };
 

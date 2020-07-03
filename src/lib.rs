@@ -143,7 +143,7 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
         },
 
         material: Material::Lambertian {
-            albedo: Color::new(0.5, 0.5, 0.5),
+            albedo: Texture::SolidColor(Color::new(0.5, 0.5, 0.5)),
         },
     };
 
@@ -161,7 +161,9 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
                 let roll: f64 = rng.gen();
                 let (center2, material) = if roll < 0.8 {
                     let center2 = center + Vec3([0.0, rng.gen_range(0.0, 0.5), 0.0]);
-                    let albedo = Color::random(rng, 0.0..1.0) + Color::random(rng, 0.0..1.0);
+                    let albedo = Texture::SolidColor(
+                        Color::random(rng, 0.0..1.0) + Color::random(rng, 0.0..1.0),
+                    );
                     (center2, Material::Lambertian { albedo })
                 } else if roll < 0.95 {
                     let albedo = Color::random(rng, 0.5..1.0);
@@ -268,6 +270,19 @@ where
         Some(None) => Color::new(0.0, 0.0, 0.0),
         Some(Some(Scattered { attenuation, ray })) => {
             attenuation * ray_color(&ray, world, time, rng, depth - 1)
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Texture {
+    SolidColor(Color),
+}
+
+impl Texture {
+    pub fn color_at(&self, u: f64, v: f64, p: Point3) -> Color {
+        match self {
+            Self::SolidColor(color) => *color,
         }
     }
 }

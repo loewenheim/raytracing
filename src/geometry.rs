@@ -1,5 +1,6 @@
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
+use std::f64::consts::PI;
 use std::iter::Sum;
 use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
@@ -81,11 +82,20 @@ impl Intersection for Shape {
                     if t > tmin && t < tmax {
                         let point = ray.at(t);
                         let normal = (point - center).normed();
+                        let (u, v) = {
+                            let p = (point - center) / radius;
+                            let phi = p[2].atan2(p[0]);
+                            let theta = p[1].asin();
+                            let u = 1.0 - (phi + PI) / (2.0 * PI);
+                            let v = (theta + PI / 2.0) / PI;
+                            (u, v)
+                        };
                         Some(IntersectionPoint {
                             t,
                             point,
                             normal,
                             in_vec: dir.normed(),
+                            surface_coordinates: (u, v),
                         })
                     } else {
                         None
@@ -106,6 +116,7 @@ impl Intersection for Shape {
                             in_vec: ray.direction.normed(),
                             normal,
                             point: ray.at(t),
+                            surface_coordinates: (0.0, 0.0),
                         };
                         Some(intersection_point)
                     } else {
@@ -191,6 +202,7 @@ pub struct IntersectionPoint {
     pub normal: UnitVec3,
     pub t: f64,
     pub in_vec: UnitVec3,
+    pub surface_coordinates: (f64, f64),
 }
 
 impl IntersectionPoint {

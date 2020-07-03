@@ -1,12 +1,12 @@
 use super::color::Color;
 use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3, Vec3};
-use super::Scattered;
+use super::{Scattered, Texture};
 use rand::Rng;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Material {
     Lambertian {
-        albedo: Color,
+        albedo: Texture,
     },
 
     Metal {
@@ -34,7 +34,9 @@ impl Material {
         rng: &mut R,
     ) -> Option<Scattered> {
         match *self {
-            Material::Lambertian { albedo } => {
+            Material::Lambertian {
+                albedo: Texture::SolidColor(color),
+            } => {
                 let direction = *random_unit_vector(rng) + *p.normal;
                 let scattered = Ray {
                     origin: p.point,
@@ -42,7 +44,7 @@ impl Material {
                 };
 
                 Some(Scattered {
-                    attenuation: albedo,
+                    attenuation: color,
                     ray: scattered,
                 })
             }
