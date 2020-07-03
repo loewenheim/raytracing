@@ -1,5 +1,5 @@
+use super::color::Color;
 use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3, Vec3};
-use super::light::Color;
 use super::Scattered;
 use rand::Rng;
 

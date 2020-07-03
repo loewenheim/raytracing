@@ -1,10 +1,12 @@
 pub mod geometry;
 pub mod materials;
 
+use camera::Camera;
+use color::{color, Color};
 use geometry::{Point3, Ray, Shape, Vec3};
-use light::Color;
 use materials::Material;
 use rand::Rng;
+use rayon::prelude::*;
 
 pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> World {
     let mut world = World::new();
@@ -31,24 +33,21 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> World {
             ]);
 
             if center.dist(&Point3([4.0, 0.2, 0.0])) > 0.9 {
-                let shape = Shape::Sphere {
-                    center,
-                    radius: 0.2,
-                };
-
                 let roll: f64 = rng.gen();
-                let material = if roll < 0.8 {
+                let (center2, material) = if roll < 0.8 {
+                    let center2 = center + Vec3([0.0, rng.gen_range(0.0, 0.5), 0.0]);
                     let albedo = Color::random(rng, 0.0..1.0) + Color::random(rng, 0.0..1.0);
-                    Material::Lambertian { albedo }
+                    (center2, Material::Lambertian { albedo })
                 } else if roll < 0.95 {
                     let albedo = Color::random(rng, 0.5..1.0);
                     let fuzz = rng.gen_range(0.0, 0.5);
 
-                    Material::Metal { albedo, fuzz }
+                    (center, Material::Metal { albedo, fuzz })
                 } else {
-                    Material::glass()
+                    (center, Material::glass())
                 };
 
+                let shape = Shape::sphere(0.2, (0.0, center), (1.0, center2));
                 world.push(Object { shape, material })
             }
         }
@@ -69,10 +68,11 @@ impl Object {
         r: &Ray,
         tmin: f64,
         tmax: f64,
+        time: f64,
         rng: &mut R,
     ) -> Option<(f64, Option<Scattered>)> {
         self.shape
-            .intersect(r, tmin, tmax)
+            .intersect(r, tmin, tmax, time)
             .as_ref()
             .map(|p| (p.t, self.material.scatter(p, rng)))
     }
@@ -110,12 +110,13 @@ impl World {
         ray: &Ray,
         tmin: f64,
         mut tmax: f64,
+        time: f64,
         rng: &mut R,
     ) -> Option<Option<Scattered>> {
         let mut scattered = None;
 
         for object in self.iter() {
-            if let Some((t_new, scattered_new)) = object.scatter(ray, tmin, tmax, rng) {
+            if let Some((t_new, scattered_new)) = object.scatter(ray, tmin, tmax, time, rng) {
                 scattered = Some(scattered_new);
                 tmax = t_new;
             }
@@ -125,9 +126,60 @@ impl World {
     }
 }
 
-pub mod light {
+pub fn pixel(
+    camera: &Camera,
+    world: &World,
+    (row, column): (u32, u32),
+    (width, height): (u32, u32),
+    (open_time, close_time): (f64, f64),
+    samples: usize,
+    max_depth: usize,
+) -> [u8; 3] {
+    let color_vec: Vec3 = (0..samples)
+        .into_par_iter()
+        .map(|_| {
+            let mut rng = rand::thread_rng();
+            let u = (f64::from(row) + rng.gen::<f64>()) / f64::from(width - 1);
+            let v = (f64::from(column) + rng.gen::<f64>()) / f64::from(height - 1);
+            let time = rng.gen_range(open_time, close_time);
+            ray_color(
+                &camera.ray(u, v, &mut rng),
+                &world,
+                time,
+                &mut rng,
+                max_depth,
+            )
+        })
+        .sum::<Vec3>()
+        / samples as f64;
+    color(color_vec)
+}
+
+pub fn ray_color<R>(ray: &Ray, world: &World, time: f64, rng: &mut R, depth: usize) -> Color
+where
+    R: Rng + ?Sized,
+{
+    if depth == 0 {
+        return Color::new(0.0, 0.0, 0.0);
+    }
+    match world.scatter(ray, 0.001, f64::INFINITY, time, rng) {
+        None => {
+            let unit = ray.direction.normed();
+            let t = 0.5 * (unit[1] + 1.0);
+            let blue = Color::new(0.5, 0.7, 1.0);
+            let white = Color::new(1.0, 1.0, 1.0);
+            blue.mix(&white, t)
+        }
+
+        Some(None) => Color::new(0.0, 0.0, 0.0),
+        Some(Some(Scattered { attenuation, ray })) => {
+            attenuation * ray_color(&ray, world, time, rng, depth - 1)
+        }
+    }
+}
+
+pub mod color {
     use super::geometry::*;
-    use super::{Scattered, World};
     use rand::{
         distributions::{Distribution, Uniform},
         Rng,
@@ -135,30 +187,13 @@ pub mod light {
     use std::iter::Sum;
     use std::ops::{Add, Deref, Mul};
 
-    pub fn ray_color<R>(ray: &Ray, world: &World, rng: &mut R, depth: usize) -> Color
-    where
-        R: Rng + ?Sized,
-    {
-        if depth == 0 {
-            return Color::new(0.0, 0.0, 0.0);
-        }
-        match world.scatter(ray, 0.001, f64::INFINITY, rng) {
-            None => {
-                let unit = ray.direction.normed();
-                let t = 0.5 * (unit[1] + 1.0);
-                let blue = Color::new(0.5, 0.7, 1.0);
-                let white = Color::new(1.0, 1.0, 1.0);
-                blue.mix(&white, t)
-            }
-
-            Some(None) => Color::new(0.0, 0.0, 0.0),
-            Some(Some(Scattered { attenuation, ray })) => {
-                attenuation * ray_color(&ray, world, rng, depth - 1)
-            }
-        }
+    pub fn color(v: Vec3) -> [u8; 3] {
+        [
+            (v[0] * 255.999) as u8,
+            (v[1] * 255.999) as u8,
+            (v[2] * 255.999) as u8,
+        ]
     }
-
-    pub type Rgb = image::Rgb<u8>;
 
     #[derive(Debug, Clone, Copy)]
     pub struct Color([f64; 3]);

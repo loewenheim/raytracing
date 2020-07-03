@@ -7,13 +7,54 @@ use std::ops::{
 
 #[derive(Clone, Copy, Debug)]
 pub enum Shape {
-    Sphere { center: Point3, radius: f64 },
+    Sphere {
+        center: Point3,
+        radius: f64,
+    },
 
-    Plane { normal: UnitVec3, offset: f64 },
+    Plane {
+        normal: UnitVec3,
+        offset: f64,
+    },
+
+    MovingSphere {
+        ray: Ray,
+        radius: f64,
+        start_time: f64,
+    },
 }
 
 impl Shape {
-    pub fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<IntersectionPoint> {
+    pub fn sphere(
+        radius: f64,
+        (start_time, start_center): (f64, Point3),
+        (end_time, end_center): (f64, Point3),
+    ) -> Self {
+        assert!(end_time > start_time);
+
+        if start_center == end_center {
+            Self::Sphere {
+                center: start_center,
+                radius,
+            }
+        } else {
+            Self::MovingSphere {
+                start_time,
+                radius,
+                ray: Ray {
+                    origin: start_center,
+                    direction: end_center - start_center,
+                },
+            }
+        }
+    }
+    pub fn intersect(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        tmax: f64,
+        time: f64,
+    ) -> Option<IntersectionPoint> {
         match *self {
             Shape::Sphere { center, radius } => {
                 let Ray {
@@ -65,6 +106,19 @@ impl Shape {
                     }
                 }
             }
+
+            Shape::MovingSphere {
+                ray: r,
+                radius,
+                start_time,
+            } => {
+                let sphere = Shape::Sphere {
+                    center: r.at(time - start_time),
+                    radius,
+                };
+
+                sphere.intersect(ray, tmin, tmax, time)
+            }
         }
     }
 }
@@ -96,7 +150,7 @@ pub enum Face {
 }
 
 /// A point in three-dimensional space.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point3(pub [f64; 3]);
 
 impl Point3 {
@@ -126,7 +180,7 @@ impl Default for Point3 {
 }
 
 /// A vector in three-dimensional space.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vec3(pub [f64; 3]);
 
 impl Vec3 {
@@ -339,7 +393,7 @@ impl Deref for Onb {
 }
 /// A ray in three-dimensional space, i.e., a set of the form
 /// {A + tb | t ∈ ℝ+}, where A is a [Point3] and b a [Vec3].
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Ray {
     pub origin: Point3,
     pub direction: Vec3,
@@ -348,8 +402,11 @@ pub struct Ray {
 impl Ray {
     /// Returns the point origin + t * direction.
     pub fn at(&self, t: f64) -> Point3 {
-        assert!(t > 0.0);
-        self.origin + self.direction * t
+        if t <= 0.0 {
+            self.origin
+        } else {
+            self.origin + self.direction * t
+        }
     }
 }
 
