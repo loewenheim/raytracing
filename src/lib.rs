@@ -137,13 +137,20 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
     let mut world = Vec::new();
 
     let ground = Object {
-        shape: Shape::Plane {
-            normal: Vec3([0.0, 1.0, 0.0]).normed(),
-            offset: 0.0,
+        //shape: Shape::Plane {
+        //    normal: Vec3([0.0, 1.0, 0.0]).normed(),
+        //    offset: 0.0,
+        //},
+        shape: Shape::Sphere {
+            center: Point3([0.0, -1000.0, 0.0]),
+            radius: 1000.0,
         },
 
         material: Material::Lambertian {
-            albedo: Texture::SolidColor(Color::new(0.5, 0.5, 0.5)),
+            albedo: Texture::Checkered {
+                even: Box::new(Texture::SolidColor(Color::new(0.2, 0.3, 0.1))),
+                odd: Box::new(Texture::SolidColor(Color::new(0.9, 0.9, 0.9))),
+            },
         },
     };
 
@@ -183,7 +190,7 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
     world
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Object {
     pub shape: Shape,
     pub material: Material,
@@ -274,15 +281,26 @@ where
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Texture {
     SolidColor(Color),
+    Checkered {
+        odd: Box<Texture>,
+        even: Box<Texture>,
+    },
 }
 
 impl Texture {
     pub fn color_at(&self, u: f64, v: f64, p: Point3) -> Color {
         match self {
             Self::SolidColor(color) => *color,
+            Self::Checkered { odd, even } => {
+                if (10.0 * p[0]).sin() * (10.0 * p[1]).sin() * (10.0 * p[2]).sin() < 0.0 {
+                    odd.color_at(u, v, p)
+                } else {
+                    even.color_at(u, v, p)
+                }
+            }
         }
     }
 }

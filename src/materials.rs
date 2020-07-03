@@ -3,7 +3,7 @@ use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3
 use super::{Scattered, Texture};
 use rand::Rng;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Material {
     Lambertian {
         albedo: Texture,
@@ -33,10 +33,8 @@ impl Material {
         p: &IntersectionPoint,
         rng: &mut R,
     ) -> Option<Scattered> {
-        match *self {
-            Material::Lambertian {
-                albedo: Texture::SolidColor(color),
-            } => {
+        match self {
+            Material::Lambertian { albedo } => {
                 let direction = *random_unit_vector(rng) + *p.normal;
                 let scattered = Ray {
                     origin: p.point,
@@ -44,17 +42,21 @@ impl Material {
                 };
 
                 Some(Scattered {
-                    attenuation: color,
+                    attenuation: albedo.color_at(
+                        p.surface_coordinates.0,
+                        p.surface_coordinates.1,
+                        p.point,
+                    ),
                     ray: scattered,
                 })
             }
 
             Material::Metal { albedo, fuzz } => {
                 let reflected = reflect(&p.in_vec, &p.normal);
-                let scattered = *reflected + *random_unit_vector(rng) * fuzz;
+                let scattered = *reflected + *random_unit_vector(rng) * *fuzz;
                 if scattered.dot(*p.normal) >= 0.0 {
                     Some(Scattered {
-                        attenuation: albedo,
+                        attenuation: *albedo,
                         ray: Ray {
                             origin: p.point,
                             direction: scattered,
@@ -71,7 +73,7 @@ impl Material {
             } => {
                 let eta_ratio = match p.face() {
                     Face::Front => 1.0 / refraction_index,
-                    Face::Back => refraction_index,
+                    Face::Back => *refraction_index,
                 };
 
                 let in_vec_unit = p.in_vec.normed();
@@ -87,7 +89,7 @@ impl Material {
                 };
 
                 Some(Scattered {
-                    attenuation: albedo,
+                    attenuation: *albedo,
                     ray: Ray {
                         origin: p.point,
                         direction,
