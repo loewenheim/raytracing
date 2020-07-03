@@ -1,9 +1,10 @@
 use super::color::Color;
 use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3, Vec3};
-use super::{Scattered, Texture};
+use crate::textures::Texture;
+use crate::Scattered;
 use rand::Rng;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Material {
     Lambertian {
         albedo: Texture,

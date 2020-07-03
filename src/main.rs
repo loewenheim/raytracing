@@ -1,10 +1,8 @@
 use image::{ImageBuffer, RgbImage};
 use rayon::prelude::*;
 use raytracing::camera::{Camera, CameraOptions};
-use raytracing::color::Color;
-use raytracing::geometry::{Point3, Shape, Vec3};
-use raytracing::materials::Material;
-use raytracing::{pixel, random_world, BvhNode, Object, Texture};
+use raytracing::geometry::{Point3, Vec3};
+use raytracing::{pixel, two_perlin_spheres, BvhNode};
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
@@ -31,43 +29,7 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let mut world = random_world(&mut rng);
-
-    let sphere1 = Object {
-        shape: Shape::Sphere {
-            center: Point3([0.0, 1.0, 0.0]),
-            radius: 1.0,
-        },
-
-        material: Material::glass(),
-    };
-
-    let sphere2 = Object {
-        shape: Shape::Sphere {
-            center: Point3([-4.0, 1.0, 0.0]),
-            radius: 1.0,
-        },
-
-        material: Material::Lambertian {
-            albedo: Texture::SolidColor(Color::new(0.4, 0.2, 0.1)),
-        },
-    };
-
-    let sphere3 = Object {
-        shape: Shape::Sphere {
-            center: Point3([4.0, 1.0, 0.0]),
-            radius: 1.0,
-        },
-
-        material: Material::Metal {
-            albedo: Color::new(0.7, 0.6, 0.5),
-            fuzz: 0.0,
-        },
-    };
-
-    world.push(sphere1);
-    world.push(sphere2);
-    world.push(sphere3);
+    let mut world = two_perlin_spheres(&mut rng);
 
     let world = BvhNode::create(&mut world, &mut rng);
 

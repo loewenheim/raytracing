@@ -1,13 +1,17 @@
 pub mod geometry;
 pub mod materials;
+pub mod textures;
 
 use camera::Camera;
 use color::{color, Color};
 use geometry::{Boundable, BoundingBox, Intersection, Point3, Ray, Shape, Vec3};
 use materials::Material;
+use perlin_noise::PerlinNoise;
 use rand::Rng;
 use rayon::prelude::*;
 use std::cmp::Ordering;
+use std::sync::Arc;
+use textures::Texture;
 
 #[derive(Debug, Clone)]
 pub enum BvhNode<'a, T: Boundable> {
@@ -133,6 +137,77 @@ impl<'a> BvhNode<'a, Object> {
     }
 }
 
+pub fn default_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
+    let mut world = random_world(rng);
+    let sphere1 = Object {
+        shape: Shape::Sphere {
+            center: Point3([0.0, 1.0, 0.0]),
+            radius: 1.0,
+        },
+
+        material: Material::glass(),
+    };
+
+    let sphere2 = Object {
+        shape: Shape::Sphere {
+            center: Point3([-4.0, 1.0, 0.0]),
+            radius: 1.0,
+        },
+
+        material: Material::Lambertian {
+            albedo: Texture::SolidColor(Color::new(0.4, 0.2, 0.1)),
+        },
+    };
+
+    let sphere3 = Object {
+        shape: Shape::Sphere {
+            center: Point3([4.0, 1.0, 0.0]),
+            radius: 1.0,
+        },
+
+        material: Material::Metal {
+            albedo: Color::new(0.7, 0.6, 0.5),
+            fuzz: 0.0,
+        },
+    };
+
+    world.push(sphere1);
+    world.push(sphere2);
+    world.push(sphere3);
+
+    world
+}
+
+pub fn two_perlin_spheres<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
+    let mut world = Vec::new();
+
+    let perlin = Arc::new(PerlinNoise::new());
+    let sphere1 = Object {
+        shape: Shape::Sphere {
+            center: Point3([0.0, -1000.0, 0.0]),
+            radius: 1000.0,
+        },
+        material: Material::Lambertian {
+            albedo: Texture::Noise(perlin.clone()),
+        },
+    };
+
+    let sphere2 = Object {
+        shape: Shape::Sphere {
+            center: Point3([0.0, 2.0, 0.0]),
+            radius: 2.0,
+        },
+        material: Material::Lambertian {
+            albedo: Texture::Noise(perlin.clone()),
+        },
+    };
+
+    world.push(sphere1);
+    world.push(sphere2);
+
+    world
+}
+
 pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
     let mut world = Vec::new();
 
@@ -190,7 +265,7 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
     world
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Object {
     pub shape: Shape,
     pub material: Material,
@@ -277,30 +352,6 @@ where
         Some(None) => Color::new(0.0, 0.0, 0.0),
         Some(Some(Scattered { attenuation, ray })) => {
             attenuation * ray_color(&ray, world, time, rng, depth - 1)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Texture {
-    SolidColor(Color),
-    Checkered {
-        odd: Box<Texture>,
-        even: Box<Texture>,
-    },
-}
-
-impl Texture {
-    pub fn color_at(&self, u: f64, v: f64, p: Point3) -> Color {
-        match self {
-            Self::SolidColor(color) => *color,
-            Self::Checkered { odd, even } => {
-                if (10.0 * p[0]).sin() * (10.0 * p[1]).sin() * (10.0 * p[2]).sin() < 0.0 {
-                    odd.color_at(u, v, p)
-                } else {
-                    even.color_at(u, v, p)
-                }
-            }
         }
     }
 }
