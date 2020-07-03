@@ -3,13 +3,138 @@ pub mod materials;
 
 use camera::Camera;
 use color::{color, Color};
-use geometry::{Point3, Ray, Shape, Vec3};
+use geometry::{Boundable, BoundingBox, Intersection, Point3, Ray, Shape, Vec3};
 use materials::Material;
 use rand::Rng;
 use rayon::prelude::*;
+use std::cmp::Ordering;
 
-pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> World {
-    let mut world = World::new();
+#[derive(Debug, Clone)]
+pub enum BvhNode<'a, T: Boundable> {
+    Leaf {
+        bounding_box: Option<BoundingBox>,
+        shape: &'a T,
+    },
+
+    Branch {
+        bounding_box: Option<BoundingBox>,
+        left: Box<BvhNode<'a, T>>,
+        right: Box<BvhNode<'a, T>>,
+    },
+}
+
+impl<'a, T: Boundable> BvhNode<'a, T> {
+    pub fn create<R: Rng + ?Sized>(objects: &'a mut [T], rng: &mut R) -> Self {
+        assert!(!objects.is_empty());
+        let n = objects.len();
+
+        if n == 1 {
+            let shape = &objects[0];
+            let bounding_box = shape.bound();
+            Self::Leaf {
+                shape,
+                bounding_box,
+            }
+        } else {
+            let axis: usize = rng.gen_range(0, 3);
+
+            objects.sort_by(|o1, o2| match (o1.bound(), o2.bound()) {
+                (Some(bb1), Some(bb2)) => bb1.min[axis]
+                    .partial_cmp(&bb2.min[axis])
+                    .unwrap_or(Ordering::Equal),
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            });
+            let (objects_left, objects_right) = objects.split_at_mut(n / 2);
+            let left = Self::create(objects_left, rng);
+            let right = Self::create(objects_right, rng);
+            let bounding_box =
+                if let (Some(lb), Some(rb)) = (left.bounding_box(), right.bounding_box()) {
+                    Some(lb + rb)
+                } else {
+                    None
+                };
+
+            Self::Branch {
+                left: Box::new(left),
+                right: Box::new(right),
+                bounding_box,
+            }
+        }
+    }
+
+    pub fn bounding_box(&self) -> Option<BoundingBox> {
+        match *self {
+            Self::Leaf { bounding_box, .. } => bounding_box,
+            Self::Branch { bounding_box, .. } => bounding_box,
+        }
+    }
+
+    pub fn bounding_boxes(&self) -> Vec<Option<BoundingBox>> {
+        match self {
+            Self::Leaf { bounding_box, .. } => vec![*bounding_box],
+            Self::Branch {
+                bounding_box,
+                left,
+                right,
+            } => {
+                let mut l = left.bounding_boxes();
+                let mut r = right.bounding_boxes();
+                let mut result = vec![*bounding_box];
+                result.append(&mut l);
+                result.append(&mut r);
+                result
+            }
+        }
+    }
+}
+
+impl<'a> BvhNode<'a, Object> {
+    pub fn scatter<R: Rng + ?Sized>(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        tmax: f64,
+        time: f64,
+        rng: &mut R,
+    ) -> Option<Option<Scattered>> {
+        self.scatter_(ray, tmin, tmax, time, rng).map(|x| x.1)
+    }
+
+    fn scatter_<R: Rng + ?Sized>(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        mut tmax: f64,
+        time: f64,
+        rng: &mut R,
+    ) -> Option<(f64, Option<Scattered>)> {
+        if let Some(bb) = self.bounding_box() {
+            if !bb.hit(ray, tmin, tmax) {
+                return None;
+            }
+        }
+        match self {
+            Self::Leaf { shape, .. } => (*shape).scatter(ray, tmin, tmax, time, rng),
+            Self::Branch { left, right, .. } => {
+                let mut scattered = None;
+                if let Some((t, new_scattered)) = (*left).scatter_(ray, tmin, tmax, time, rng) {
+                    scattered = Some((t, new_scattered));
+                    tmax = t;
+                }
+                if let Some((t, new_scattered)) = (*right).scatter_(ray, tmin, tmax, time, rng) {
+                    scattered = Some((t, new_scattered));
+                }
+
+                scattered
+            }
+        }
+    }
+}
+
+pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
+    let mut world = Vec::new();
 
     let ground = Object {
         shape: Shape::Plane {
@@ -78,57 +203,20 @@ impl Object {
     }
 }
 
+impl Boundable for Object {
+    fn bound(&self) -> Option<BoundingBox> {
+        self.shape.bound()
+    }
+}
+
 pub struct Scattered {
     pub ray: Ray,
     pub attenuation: Color,
 }
 
-#[derive(Debug, Clone)]
-pub struct World {
-    objects: Vec<Object>,
-}
-
-impl std::ops::Deref for World {
-    type Target = [Object];
-
-    fn deref(&self) -> &Self::Target {
-        &self.objects
-    }
-}
-
-impl World {
-    pub fn new() -> Self {
-        Self {
-            objects: Vec::new(),
-        }
-    }
-    pub fn push(&mut self, object: Object) {
-        self.objects.push(object);
-    }
-    pub fn scatter<R: Rng + ?Sized>(
-        &self,
-        ray: &Ray,
-        tmin: f64,
-        mut tmax: f64,
-        time: f64,
-        rng: &mut R,
-    ) -> Option<Option<Scattered>> {
-        let mut scattered = None;
-
-        for object in self.iter() {
-            if let Some((t_new, scattered_new)) = object.scatter(ray, tmin, tmax, time, rng) {
-                scattered = Some(scattered_new);
-                tmax = t_new;
-            }
-        }
-
-        scattered
-    }
-}
-
-pub fn pixel(
+pub fn pixel<'a>(
     camera: &Camera,
-    world: &World,
+    world: &BvhNode<Object>,
     (row, column): (u32, u32),
     (width, height): (u32, u32),
     (open_time, close_time): (f64, f64),
@@ -155,7 +243,13 @@ pub fn pixel(
     color(color_vec)
 }
 
-pub fn ray_color<R>(ray: &Ray, world: &World, time: f64, rng: &mut R, depth: usize) -> Color
+pub fn ray_color<R>(
+    ray: &Ray,
+    world: &BvhNode<Object>,
+    time: f64,
+    rng: &mut R,
+    depth: usize,
+) -> Color
 where
     R: Rng + ?Sized,
 {

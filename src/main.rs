@@ -4,11 +4,11 @@ use raytracing::camera::{Camera, CameraOptions};
 use raytracing::color::Color;
 use raytracing::geometry::{Point3, Shape, Vec3};
 use raytracing::materials::Material;
-use raytracing::{pixel, random_world, Object};
+use raytracing::{pixel, random_world, BvhNode, Object};
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
-    const IMAGE_WIDTH: u32 = 384;
+    const IMAGE_WIDTH: u32 = 1280;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
     const MAX_DEPTH: usize = 50;
@@ -69,7 +69,7 @@ fn main() {
     world.push(sphere2);
     world.push(sphere3);
 
-    //let world = std::sync::Arc::new(world);
+    let world = BvhNode::create(&mut world, &mut rng);
 
     let pixels: Vec<[u8; 3]> = (0..IMAGE_HEIGHT)
         .into_par_iter()

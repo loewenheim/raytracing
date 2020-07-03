@@ -5,6 +5,14 @@ use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
 
+pub trait Intersection {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint>;
+}
+
+pub trait Boundable {
+    fn bound(&self) -> Option<BoundingBox>;
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum Shape {
     Sphere {
@@ -21,6 +29,7 @@ pub enum Shape {
         ray: Ray,
         radius: f64,
         start_time: f64,
+        end_time: f64,
     },
 }
 
@@ -40,6 +49,7 @@ impl Shape {
         } else {
             Self::MovingSphere {
                 start_time,
+                end_time,
                 radius,
                 ray: Ray {
                     origin: start_center,
@@ -48,13 +58,10 @@ impl Shape {
             }
         }
     }
-    pub fn intersect(
-        &self,
-        ray: &Ray,
-        tmin: f64,
-        tmax: f64,
-        time: f64,
-    ) -> Option<IntersectionPoint> {
+}
+
+impl Intersection for Shape {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
         match *self {
             Shape::Sphere { center, radius } => {
                 let Ray {
@@ -111,6 +118,7 @@ impl Shape {
                 ray: r,
                 radius,
                 start_time,
+                ..
             } => {
                 let sphere = Shape::Sphere {
                     center: r.at(time - start_time),
@@ -120,6 +128,58 @@ impl Shape {
                 sphere.intersect(ray, tmin, tmax, time)
             }
         }
+    }
+}
+
+impl Boundable for Shape {
+    fn bound(&self) -> Option<BoundingBox> {
+        match *self {
+            Shape::Plane { .. } => None,
+            Shape::Sphere { center, radius } => {
+                let min = center - Vec3([1.0, 1.0, 1.0]) * radius;
+                let max = center + Vec3([1.0, 1.0, 1.0]) * radius;
+
+                Some(BoundingBox { min, max })
+            }
+            Shape::MovingSphere {
+                ray,
+                radius,
+                start_time,
+                end_time,
+            } => Some(
+                (&Shape::Sphere {
+                    center: ray.at(0.0),
+                    radius,
+                })
+                    .bound()
+                    .unwrap()
+                    + (&Shape::Sphere {
+                        center: ray.at(end_time - start_time),
+                        radius,
+                    })
+                        .bound()
+                        .unwrap(),
+            ),
+        }
+    }
+}
+
+impl<T: Boundable> Boundable for Vec<T> {
+    fn bound(&self) -> Option<BoundingBox> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mut result = None;
+        for shape in self.iter() {
+            match (result, shape.bound()) {
+                (Some(old_box), Some(new_box)) => result = Some(old_box + new_box),
+                (None, Some(new_box)) => result = Some(new_box),
+                (_, None) => return None,
+            }
+        }
+
+        result
     }
 }
 /// Contains information about the intersection of a ray
@@ -468,6 +528,93 @@ impl Distribution<Vec3> for UnitDisc {
         }
 
         p
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Interval {
+    Empty,
+    Nonempty(f64, f64),
+}
+
+impl Interval {
+    pub fn new(start: f64, end: f64) -> Self {
+        if start > end {
+            Interval::Empty
+        } else {
+            Interval::Nonempty(start, end)
+        }
+    }
+}
+
+fn intersect_interval(ray: &Ray, interval: &Interval, coord: usize) -> Interval {
+    assert!(coord < 3);
+    match interval {
+        Interval::Empty => Interval::Empty,
+        Interval::Nonempty(start, end) => {
+            let origin = ray.origin[coord];
+            let direction = ray.direction[coord];
+
+            if direction == 0.0 {
+                return Interval::Empty;
+            }
+
+            let (t0, t1) = ((start - origin) / direction, (end - origin) / direction);
+
+            Interval::new(t0.min(t1), t0.max(t1))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BoundingBox {
+    pub min: Point3,
+    pub max: Point3,
+}
+
+impl BoundingBox {
+    pub fn hit(&self, ray: &Ray, mut tmin: f64, mut tmax: f64) -> bool {
+        for i in 0..3 {
+            let d = ray.direction[i];
+            let o = ray.origin[i];
+            let mut t0 = (self.min[i] - o) / d;
+            let mut t1 = (self.max[i] - o) / d;
+            if d < 0.0 {
+                std::mem::swap(&mut t0, &mut t1);
+            }
+
+            tmin = t0.max(tmin);
+            tmax = t1.min(tmax);
+
+            if tmax <= tmin {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl Add<BoundingBox> for BoundingBox {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        let new_min = Point3([
+            self.min[0].min(other.min[0]),
+            self.min[1].min(other.min[1]),
+            self.min[2].min(other.min[2]),
+        ]);
+
+        let new_max = Point3([
+            self.max[0].max(other.max[0]),
+            self.max[1].max(other.max[1]),
+            self.max[2].max(other.max[2]),
+        ]);
+
+        Self {
+            min: new_min,
+            max: new_max,
+        }
     }
 }
 
