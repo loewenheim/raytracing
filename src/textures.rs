@@ -1,12 +1,11 @@
-use super::geometry::Point3;
-use crate::color::Color;
+use super::geometry::{Point3, Vec3};
 use image::RgbImage;
 use perlin_noise::PerlinNoise;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub enum Texture {
-    SolidColor(Color),
+    SolidColor(Vec3),
     Checkered {
         odd: Box<Texture>,
         even: Box<Texture>,
@@ -21,7 +20,7 @@ impl Texture {
         Self::Image(image)
     }
 
-    pub fn color_at(&self, u: f64, v: f64, p: Point3) -> Color {
+    pub fn color_at(&self, u: f64, v: f64, p: &Point3) -> Vec3 {
         match self {
             Self::SolidColor(color) => *color,
             Self::Checkered { odd, even } => {
@@ -31,7 +30,7 @@ impl Texture {
                     even.color_at(u, v, p)
                 }
             }
-            Self::Noise(perlin) => Color::new(1.0, 1.0, 1.0) * perlin.get3d(p.0),
+            Self::Noise(perlin) => Vec3([1.0, 1.0, 1.0]) * perlin.get3d(p.0),
             Self::Image(image) => {
                 let u = u.max(0.0).min(1.0);
                 let v = 1.0 - v.max(0.0).min(1.0);
@@ -44,11 +43,11 @@ impl Texture {
 
                 let pixel = image.get_pixel(i, j);
 
-                Color::new(
+                Vec3([
                     pixel[0] as f64 / 255.0,
                     pixel[1] as f64 / 255.0,
                     pixel[2] as f64 / 255.0,
-                )
+                ])
             }
         }
     }

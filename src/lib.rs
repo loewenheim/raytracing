@@ -2,9 +2,8 @@ pub mod geometry;
 pub mod materials;
 pub mod textures;
 
-use camera::Camera;
-use color::{color, Color};
-use geometry::{Boundable, BoundingBox, Intersection, Point3, Ray, Shape, Vec3};
+use camera::{Camera, CameraOptions};
+use geometry::{Axes, Boundable, BoundingBox, Intersection, Point3, Ray, Shape, Vec3};
 use materials::Material;
 use perlin_noise::PerlinNoise;
 use rand::Rng;
@@ -13,6 +12,13 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 use textures::Texture;
 
+pub fn color(v: Vec3) -> [u8; 3] {
+    [
+        (v[0].max(0.0).min(1.0) * 255.999) as u8,
+        (v[1].max(0.0).min(1.0) * 255.999) as u8,
+        (v[2].max(0.0).min(1.0) * 255.999) as u8,
+    ]
+}
 #[derive(Debug, Clone)]
 pub enum BvhNode<'a, T: Boundable> {
     Leaf {
@@ -102,7 +108,7 @@ impl<'a> BvhNode<'a, Object> {
         tmax: f64,
         time: f64,
         rng: &mut R,
-    ) -> Option<Option<Scattered>> {
+    ) -> Option<RayHit> {
         self.scatter_(ray, tmin, tmax, time, rng).map(|x| x.1)
     }
 
@@ -113,7 +119,7 @@ impl<'a> BvhNode<'a, Object> {
         mut tmax: f64,
         time: f64,
         rng: &mut R,
-    ) -> Option<(f64, Option<Scattered>)> {
+    ) -> Option<(f64, RayHit)> {
         if let Some(bb) = self.bounding_box() {
             if !bb.hit(ray, tmin, tmax) {
                 return None;
@@ -167,7 +173,7 @@ pub fn default_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
         },
 
         material: Material::Metal {
-            albedo: Color::new(0.7, 0.6, 0.5),
+            albedo: Vec3([0.7, 0.6, 0.5]),
             fuzz: 0.0,
         },
     };
@@ -203,10 +209,135 @@ pub fn two_perlin_spheres<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
         },
     };
 
+    let diff_light = Material::DiffuseLight {
+        emit: Texture::SolidColor(Vec3([4.0, 4.0, 4.0])),
+    };
+
+    let light_sphere = Object {
+        shape: Shape::Sphere {
+            center: Point3([0.0, 7.0, 0.0]),
+            radius: 2.0,
+        },
+
+        material: diff_light.clone(),
+    };
+
+    let light_rectangle = Object {
+        shape: Shape::Rectangle {
+            lower_left: (3.0, 1.0),
+            upper_right: (5.0, 3.0),
+            height: -2.0,
+            axes: Axes::XY,
+        },
+
+        material: diff_light,
+    };
+
     world.push(sphere1);
     world.push(sphere2);
+    world.push(light_sphere);
+    world.push(light_rectangle);
 
     world
+}
+
+pub fn cornell_box(aspect_ratio: f64) -> (Vec<Object>, Camera) {
+    let mut world = Vec::new();
+
+    world.push(Object {
+        shape: Shape::Rectangle {
+            axes: Axes::YZ,
+            lower_left: (0.0, 0.0),
+            upper_right: (555.0, 555.0),
+            height: 555.0,
+        }
+        .flipped(),
+        material: Material::Lambertian {
+            albedo: Texture::SolidColor(Vec3([0.12, 0.45, 0.15])),
+        },
+    });
+
+    world.push(Object {
+        shape: Shape::Rectangle {
+            axes: Axes::YZ,
+            lower_left: (0.0, 0.0),
+            upper_right: (555.0, 555.0),
+            height: 0.0,
+        },
+        material: Material::Lambertian {
+            albedo: Texture::SolidColor(Vec3([0.65, 0.05, 0.05])),
+        },
+    });
+
+    world.push(Object {
+        shape: Shape::Rectangle {
+            axes: Axes::XZ,
+            lower_left: (213.0, 227.0),
+            upper_right: (343.0, 332.0),
+            height: 554.0,
+        },
+        material: Material::DiffuseLight {
+            emit: Texture::SolidColor(Vec3([15.0, 15.0, 15.0])),
+        },
+    });
+
+    world.push(Object {
+        shape: Shape::Rectangle {
+            axes: Axes::XZ,
+            lower_left: (0.0, 0.0),
+            upper_right: (555.0, 555.0),
+            height: 0.0,
+        }
+        .flipped(),
+        material: Material::Lambertian {
+            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+        },
+    });
+
+    world.push(Object {
+        shape: Shape::Rectangle {
+            axes: Axes::XZ,
+            lower_left: (0.0, 0.0),
+            upper_right: (555.0, 555.0),
+            height: 555.0,
+        },
+        material: Material::Lambertian {
+            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+        },
+    });
+
+    world.push(Object {
+        shape: Shape::Rectangle {
+            axes: Axes::XY,
+            lower_left: (0.0, 0.0),
+            upper_right: (555.0, 555.0),
+            height: 555.0,
+        }
+        .flipped(),
+        material: Material::Lambertian {
+            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+        },
+    });
+
+    let look_from = Point3([278.0, 278.0, -800.0]);
+    let look_at = Point3([278.0, 278.0, 0.0]);
+    let vup = Vec3([0.0, 1.0, 0.0]);
+    let focus_distance = 1.0;
+    let aperture = 0.0;
+    let vfov = 40.0;
+
+    (
+        world,
+        Camera::new(CameraOptions {
+            origin: look_from,
+            direction: look_at - look_from,
+            vup,
+            focus_distance,
+            aperture,
+            vfov,
+            aspect_ratio,
+        }),
+    )
 }
 
 pub fn earth(center: Point3, radius: f64) -> Object {
@@ -233,8 +364,8 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
 
         material: Material::Lambertian {
             albedo: Texture::Checkered {
-                even: Box::new(Texture::SolidColor(Color::new(0.2, 0.3, 0.1))),
-                odd: Box::new(Texture::SolidColor(Color::new(0.9, 0.9, 0.9))),
+                even: Box::new(Texture::SolidColor(Vec3([0.2, 0.3, 0.1]))),
+                odd: Box::new(Texture::SolidColor(Vec3([0.9, 0.9, 0.9]))),
             },
         },
     };
@@ -254,11 +385,11 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
                 let (center2, material) = if roll < 0.8 {
                     let center2 = center + Vec3([0.0, rng.gen_range(0.0, 0.5), 0.0]);
                     let albedo = Texture::SolidColor(
-                        Color::random(rng, 0.0..1.0) + Color::random(rng, 0.0..1.0),
+                        Vec3::random(0.0..1.0, rng) + Vec3::random(0.0..1.0, rng),
                     );
                     (center2, Material::Lambertian { albedo })
                 } else if roll < 0.95 {
-                    let albedo = Color::random(rng, 0.5..1.0);
+                    let albedo = Vec3::random(0.5..1.0, rng);
                     let fuzz = rng.gen_range(0.0, 0.5);
 
                     (center, Material::Metal { albedo, fuzz })
@@ -289,7 +420,7 @@ impl Object {
         tmax: f64,
         time: f64,
         rng: &mut R,
-    ) -> Option<(f64, Option<Scattered>)> {
+    ) -> Option<(f64, RayHit)> {
         self.shape
             .intersect(r, tmin, tmax, time)
             .as_ref()
@@ -303,14 +434,16 @@ impl Boundable for Object {
     }
 }
 
-pub struct Scattered {
-    pub ray: Ray,
-    pub attenuation: Color,
+pub enum RayHit {
+    Scattered { ray: Ray, attenuation: Vec3 },
+
+    Emitted(Vec3),
 }
 
 pub fn pixel<'a>(
     camera: &Camera,
     world: &BvhNode<Object>,
+    background_color: Vec3,
     (row, column): (u32, u32),
     (width, height): (u32, u32),
     (open_time, close_time): (f64, f64),
@@ -327,6 +460,7 @@ pub fn pixel<'a>(
             ray_color(
                 &camera.ray(u, v, &mut rng),
                 &world,
+                background_color,
                 time,
                 &mut rng,
                 max_depth,
@@ -340,150 +474,23 @@ pub fn pixel<'a>(
 pub fn ray_color<R>(
     ray: &Ray,
     world: &BvhNode<Object>,
+    background_color: Vec3,
     time: f64,
     rng: &mut R,
     depth: usize,
-) -> Color
+) -> Vec3
 where
     R: Rng + ?Sized,
 {
     if depth == 0 {
-        return Color::new(0.0, 0.0, 0.0);
+        return Vec3([0.0, 0.0, 0.0]);
     }
     match world.scatter(ray, 0.001, f64::INFINITY, time, rng) {
-        None => {
-            let unit = ray.direction.normed();
-            let t = 0.5 * (unit[1] + 1.0);
-            let blue = Color::new(0.5, 0.7, 1.0);
-            let white = Color::new(1.0, 1.0, 1.0);
-            blue.mix(&white, t)
-        }
+        None => background_color,
 
-        Some(None) => Color::new(0.0, 0.0, 0.0),
-        Some(Some(Scattered { attenuation, ray })) => {
-            attenuation * ray_color(&ray, world, time, rng, depth - 1)
-        }
-    }
-}
-
-pub mod color {
-    use super::geometry::*;
-    use rand::{
-        distributions::{Distribution, Uniform},
-        Rng,
-    };
-    use std::iter::Sum;
-    use std::ops::{Add, Deref, Mul};
-
-    pub fn color(v: Vec3) -> [u8; 3] {
-        [
-            (v[0] * 255.999) as u8,
-            (v[1] * 255.999) as u8,
-            (v[2] * 255.999) as u8,
-        ]
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    pub struct Color([f64; 3]);
-
-    impl Sum<Color> for Vec3 {
-        fn sum<I: Iterator<Item = Color>>(iter: I) -> Vec3 {
-            Vec3(iter.fold([0.0f64, 0.0, 0.0], |acc, c| {
-                [acc[0] + c.0[0], acc[1] + c.0[1], acc[2] + c.0[2]]
-            }))
-        }
-    }
-
-    impl Color {
-        pub fn new(red: f64, green: f64, blue: f64) -> Self {
-            assert!(
-                red >= 0.0
-                    && red <= 1.0
-                    && green >= 0.0
-                    && green <= 1.0
-                    && blue >= 0.0
-                    && blue <= 1.0,
-                format!("{:?} is not a legal color vector", (red, green, blue))
-            );
-            Self([red, green, blue])
-        }
-
-        pub fn random<R: Rng + ?Sized>(rng: &mut R, range: std::ops::Range<f64>) -> Self {
-            let range = Uniform::from(range);
-            Self([range.sample(rng), range.sample(rng), range.sample(rng)])
-        }
-
-        pub fn mix(&self, other: &Self, t: f64) -> Self {
-            assert!(t >= 0.0 && t <= 1.0, format!("{} is not in [0, 1]", t));
-
-            let [r1, g1, b1] = self.0;
-            let [r2, g2, b2] = other.0;
-
-            Self::new(
-                t * r1 + (1.0 - t) * r2,
-                t * g1 + (1.0 - t) * g2,
-                t * b1 + (1.0 - t) * b2,
-            )
-        }
-
-        pub fn map<F: FnMut(f64) -> f64>(self, mut f: F) -> Self {
-            let [r, g, b] = self.0;
-            Color::new(f(r), f(g), f(b))
-        }
-    }
-
-    impl Into<[u8; 3]> for Color {
-        fn into(self) -> [u8; 3] {
-            let [red, green, blue] = self.0;
-            let convert = |x| (x * 255.999) as u8;
-            [convert(red), convert(green), convert(blue)]
-        }
-    }
-
-    impl Mul<f64> for Color {
-        type Output = Self;
-        fn mul(self, scalar: f64) -> Self::Output {
-            Self([self[0] * scalar, self[1] * scalar, self[2] * scalar])
-        }
-    }
-
-    impl Mul<Color> for Color {
-        type Output = Self;
-        fn mul(self, other: Self) -> Self::Output {
-            Self([self[0] * other[0], self[1] * other[1], self[2] * other[2]])
-        }
-    }
-
-    impl Add<Color> for Color {
-        type Output = Self;
-        fn add(self, other: Self) -> Self::Output {
-            Self([
-                0.5 * (self[0] + other[0]),
-                0.5 * (self[1] + other[1]),
-                0.5 * (self[2] + other[2]),
-            ])
-        }
-    }
-
-    impl Deref for Color {
-        type Target = [f64; 3];
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    #[cfg(test)]
-    mod test {
-        use super::*;
-
-        #[test]
-        fn random_color() {
-            let mut rng = rand::thread_rng();
-
-            for _ in 0..20 {
-                let _color = Color::random(&mut rng, 0.0..1.0);
-            }
+        Some(RayHit::Emitted(color)) => color,
+        Some(RayHit::Scattered { attenuation, ray }) => {
+            attenuation * ray_color(&ray, world, background_color, time, rng, depth - 1)
         }
     }
 }

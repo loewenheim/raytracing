@@ -3,7 +3,7 @@ use rand::Rng;
 use std::f64::consts::PI;
 use std::iter::Sum;
 use std::ops::{
-    Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
+    Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Range, Sub, SubAssign,
 };
 
 pub trait Intersection {
@@ -14,7 +14,7 @@ pub trait Boundable {
     fn bound(&self) -> Option<BoundingBox>;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Shape {
     Sphere {
         center: Point3,
@@ -32,9 +32,22 @@ pub enum Shape {
         start_time: f64,
         end_time: f64,
     },
+
+    Rectangle {
+        axes: Axes,
+        lower_left: (f64, f64),
+        upper_right: (f64, f64),
+        height: f64,
+    },
+
+    Flipped(Box<Shape>),
 }
 
 impl Shape {
+    pub fn flipped(self) -> Self {
+        Self::Flipped(Box::new(self))
+    }
+
     pub fn sphere(
         radius: f64,
         (start_time, start_center): (f64, Point3),
@@ -63,13 +76,13 @@ impl Shape {
 
 impl Intersection for Shape {
     fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
-        match *self {
+        match self {
             Shape::Sphere { center, radius } => {
                 let Ray {
                     origin: o,
                     direction: dir,
                 } = ray;
-                let oc = *o - center;
+                let oc = *o - *center;
                 let a = dir.norm_squared();
                 let half_b = oc.dot(*dir);
                 let c = oc.norm_squared() - radius * radius;
@@ -81,9 +94,9 @@ impl Intersection for Shape {
                     let t = (-half_b - discriminant.sqrt()) / a;
                     if t > tmin && t < tmax {
                         let point = ray.at(t);
-                        let normal = (point - center).normed();
+                        let normal = (point - *center).normed();
                         let (u, v) = {
-                            let p = (point - center) / radius;
+                            let p = (point - *center) / *radius;
                             let phi = p[2].atan2(p[0]);
                             let theta = p[1].asin();
                             let u = 1.0 - (phi + PI) / (2.0 * PI);
@@ -104,17 +117,17 @@ impl Intersection for Shape {
             }
 
             Shape::Plane { normal, offset } => {
-                if ray.direction.dot(*normal).abs() <= 1e-10 {
+                if ray.direction.dot(**normal).abs() <= 1e-10 {
                     None
                 } else {
                     let u = Vec3(ray.origin.0);
-                    let t = (offset - u.dot(*normal)) / ray.direction.dot(*normal);
+                    let t = (offset - u.dot(**normal)) / ray.direction.dot(**normal);
 
                     if t >= tmin && t < tmax {
                         let intersection_point = IntersectionPoint {
                             t,
                             in_vec: ray.direction.normed(),
-                            normal,
+                            normal: *normal,
                             point: ray.at(t),
                             surface_coordinates: (0.0, 0.0),
                         };
@@ -133,10 +146,56 @@ impl Intersection for Shape {
             } => {
                 let sphere = Shape::Sphere {
                     center: r.at(time - start_time),
-                    radius,
+                    radius: *radius,
                 };
 
                 sphere.intersect(ray, tmin, tmax, time)
+            }
+
+            Shape::Rectangle {
+                lower_left: (x0, y0),
+                upper_right: (x1, y1),
+                height,
+                axes,
+            } => {
+                let (p1, p2, o) = match axes {
+                    Axes::XY => (0, 1, 2),
+                    Axes::XZ => (0, 2, 1),
+                    Axes::YZ => (1, 2, 0),
+                };
+
+                let t = (height - ray.origin[o]) / ray.direction[o];
+                if t < tmin || t > tmax {
+                    return None;
+                }
+
+                let point = ray.at(t);
+                if point[p1] < *x0 || point[p1] > *x1 || point[p2] < *y0 || point[p2] > *y1 {
+                    return None;
+                }
+
+                let u = (point[p1] - x0) / (x1 - x0);
+                let v = (point[p2] - y0) / (y1 - y0);
+
+                let mut normal = Vec3([0.0, 0.0, 0.0]);
+                normal[o] = 1.0;
+
+                Some(IntersectionPoint {
+                    point,
+                    surface_coordinates: (u, v),
+                    normal: normal.normed(),
+                    t,
+                    in_vec: ray.direction.normed(),
+                })
+            }
+
+            Self::Flipped(inner) => {
+                inner
+                    .intersect(ray, tmin, tmax, time)
+                    .map(|ip| IntersectionPoint {
+                        normal: -ip.normal,
+                        ..ip
+                    })
             }
         }
     }
@@ -144,11 +203,11 @@ impl Intersection for Shape {
 
 impl Boundable for Shape {
     fn bound(&self) -> Option<BoundingBox> {
-        match *self {
+        match self {
             Shape::Plane { .. } => None,
             Shape::Sphere { center, radius } => {
-                let min = center - Vec3([1.0, 1.0, 1.0]) * radius;
-                let max = center + Vec3([1.0, 1.0, 1.0]) * radius;
+                let min = *center - Vec3([1.0, 1.0, 1.0]) * *radius;
+                let max = *center + Vec3([1.0, 1.0, 1.0]) * *radius;
 
                 Some(BoundingBox { min, max })
             }
@@ -160,17 +219,45 @@ impl Boundable for Shape {
             } => Some(
                 (&Shape::Sphere {
                     center: ray.at(0.0),
-                    radius,
+                    radius: *radius,
                 })
                     .bound()
                     .unwrap()
                     + (&Shape::Sphere {
                         center: ray.at(end_time - start_time),
-                        radius,
+                        radius: *radius,
                     })
                         .bound()
                         .unwrap(),
             ),
+
+            Shape::Rectangle {
+                lower_left: (x0, y0),
+                upper_right: (x1, y1),
+                height,
+                axes,
+            } => {
+                let (p1, p2, o) = match axes {
+                    Axes::XY => (0, 1, 2),
+                    Axes::XZ => (0, 2, 1),
+                    Axes::YZ => (1, 2, 0),
+                };
+
+                let mut min = Point3::default();
+                let mut max = Point3::default();
+
+                min[p1] = *x0;
+                min[p2] = *y0;
+                min[o] = height - 0.0001;
+
+                max[p1] = *x1;
+                max[p2] = *y1;
+                max[o] = height + 0.0001;
+
+                Some(BoundingBox { min, max })
+            }
+
+            Self::Flipped(inner) => inner.bound(),
         }
     }
 }
@@ -192,6 +279,13 @@ impl<T: Boundable> Boundable for Vec<T> {
 
         result
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Axes {
+    XY,
+    XZ,
+    YZ,
 }
 /// Contains information about the intersection of a ray
 /// with an object: the actual point, the normal vector
@@ -283,6 +377,11 @@ impl Vec3 {
     /// Returns a unit vector with the same direction as this.
     pub fn normed(&self) -> UnitVec3 {
         UnitVec3(*self / self.norm())
+    }
+
+    pub fn random<R: Rng + ?Sized>(range: Range<f64>, rng: &mut R) -> Self {
+        let range = Uniform::from(range);
+        Vec3([range.sample(rng), range.sample(rng), range.sample(rng)])
     }
 }
 
@@ -397,6 +496,13 @@ impl MulAssign<f64> for Vec3 {
         self[0] *= scalar;
         self[1] *= scalar;
         self[2] *= scalar;
+    }
+}
+
+impl Mul<Vec3> for Vec3 {
+    type Output = Self;
+    fn mul(self, other: Self) -> Self::Output {
+        Self([self[0] * other[0], self[1] * other[1], self[2] * other[2]])
     }
 }
 

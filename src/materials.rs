@@ -1,39 +1,28 @@
-use super::color::Color;
-use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3, Vec3};
+use super::geometry::{random_unit_vector, Face, IntersectionPoint, Point3, Ray, UnitVec3, Vec3};
 use crate::textures::Texture;
-use crate::Scattered;
+use crate::RayHit;
 use rand::Rng;
 
 #[derive(Clone)]
 pub enum Material {
-    Lambertian {
-        albedo: Texture,
-    },
+    Lambertian { albedo: Texture },
 
-    Metal {
-        albedo: Color,
-        fuzz: f64,
-    },
+    Metal { albedo: Vec3, fuzz: f64 },
 
-    Dielectric {
-        albedo: Color,
-        refraction_index: f64,
-    },
+    Dielectric { albedo: Vec3, refraction_index: f64 },
+
+    DiffuseLight { emit: Texture },
 }
 
 impl Material {
     pub fn glass() -> Self {
         Material::Dielectric {
             refraction_index: 1.5,
-            albedo: Color::new(1.0, 1.0, 1.0),
+            albedo: Vec3([1.0, 1.0, 1.0]),
         }
     }
 
-    pub fn scatter<R: Rng + ?Sized>(
-        &self,
-        p: &IntersectionPoint,
-        rng: &mut R,
-    ) -> Option<Scattered> {
+    pub fn scatter<R: Rng + ?Sized>(&self, p: &IntersectionPoint, rng: &mut R) -> RayHit {
         match self {
             Material::Lambertian { albedo } => {
                 let direction = *random_unit_vector(rng) + *p.normal;
@@ -42,29 +31,29 @@ impl Material {
                     direction,
                 };
 
-                Some(Scattered {
+                RayHit::Scattered {
                     attenuation: albedo.color_at(
                         p.surface_coordinates.0,
                         p.surface_coordinates.1,
-                        p.point,
+                        &p.point,
                     ),
                     ray: scattered,
-                })
+                }
             }
 
             Material::Metal { albedo, fuzz } => {
                 let reflected = reflect(&p.in_vec, &p.normal);
                 let scattered = *reflected + *random_unit_vector(rng) * *fuzz;
                 if scattered.dot(*p.normal) >= 0.0 {
-                    Some(Scattered {
+                    RayHit::Scattered {
                         attenuation: *albedo,
                         ray: Ray {
                             origin: p.point,
                             direction: scattered,
                         },
-                    })
+                    }
                 } else {
-                    None
+                    RayHit::Emitted(Vec3([0.0, 0.0, 0.0]))
                 }
             }
 
@@ -89,14 +78,20 @@ impl Material {
                     refract(&in_vec_unit, &p.normal, eta_ratio)
                 };
 
-                Some(Scattered {
+                RayHit::Scattered {
                     attenuation: *albedo,
                     ray: Ray {
                         origin: p.point,
                         direction,
                     },
-                })
+                }
             }
+
+            Material::DiffuseLight { emit } => RayHit::Emitted(emit.color_at(
+                p.surface_coordinates.0,
+                p.surface_coordinates.1,
+                &p.point,
+            )),
         }
     }
 }
