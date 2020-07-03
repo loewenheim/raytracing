@@ -2,7 +2,7 @@ use image::{ImageBuffer, RgbImage};
 use rayon::prelude::*;
 use raytracing::camera::{Camera, CameraOptions};
 use raytracing::geometry::{Point3, Vec3};
-use raytracing::{pixel, two_perlin_spheres, BvhNode};
+use raytracing::{default_world, pixel, BvhNode};
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
@@ -29,7 +29,7 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let mut world = two_perlin_spheres(&mut rng);
+    let mut world = default_world(&mut rng);
 
     let world = BvhNode::create(&mut world, &mut rng);
 

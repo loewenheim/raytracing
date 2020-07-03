@@ -148,20 +148,21 @@ pub fn default_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
         material: Material::glass(),
     };
 
-    let sphere2 = Object {
-        shape: Shape::Sphere {
-            center: Point3([-4.0, 1.0, 0.0]),
-            radius: 1.0,
-        },
+    //let sphere2 = Object {
+    //    shape: Shape::Sphere {
+    //        center: Point3([-4.0, 1.0, 0.0]),
+    //        radius: 1.0,
+    //    },
 
-        material: Material::Lambertian {
-            albedo: Texture::SolidColor(Color::new(0.4, 0.2, 0.1)),
-        },
-    };
+    //    material: Material::Lambertian {
+    //        albedo: Texture::SolidColor(Color::new(0.4, 0.2, 0.1)),
+    //    },
+    //};
+    let sphere2 = earth(Point3([4.0, 1.0, 0.0]), 1.0);
 
     let sphere3 = Object {
         shape: Shape::Sphere {
-            center: Point3([4.0, 1.0, 0.0]),
+            center: Point3([-4.0, 1.0, 0.0]),
             radius: 1.0,
         },
 
@@ -206,6 +207,15 @@ pub fn two_perlin_spheres<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
     world.push(sphere2);
 
     world
+}
+
+pub fn earth(center: Point3, radius: f64) -> Object {
+    let texture = Texture::image("earthmap.jpg");
+    Object {
+        shape: Shape::Sphere { center, radius },
+
+        material: Material::Lambertian { albedo: texture },
+    }
 }
 
 pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
