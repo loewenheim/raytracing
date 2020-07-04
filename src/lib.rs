@@ -2,7 +2,7 @@ pub mod geometry;
 pub mod materials;
 pub mod textures;
 
-use camera::{Camera, CameraOptions};
+use camera::Camera;
 use geometry::{Axes, Boundable, BoundingBox, Intersection, Point3, Ray, Shape, Vec3};
 use materials::Material;
 use perlin_noise::PerlinNoise;
@@ -12,6 +12,33 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 use textures::Texture;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ImageOptions {
+    pub height: u32,
+    pub width: u32,
+    pub samples_per_pixel: usize,
+    pub max_depth: usize,
+}
+
+pub fn pixels(camera: &Camera, world: &World, image_options: ImageOptions) -> Vec<u8> {
+    (0..image_options.height)
+        .into_par_iter()
+        .rev()
+        .flat_map(move |j| {
+            (0..image_options.width)
+                .into_par_iter()
+                .map(move |i| pixel(&camera, &world, (i, j), image_options))
+        })
+        .collect::<Vec<[u8; 3]>>()
+        .concat()
+}
+
+#[derive(Clone)]
+pub struct World {
+    pub objects: BvhNode<Object>,
+    pub background_color: Vec3,
+}
+
 pub fn color(v: Vec3) -> [u8; 3] {
     [
         (v[0].max(0.0).min(1.0) * 255.999) as u8,
@@ -20,26 +47,26 @@ pub fn color(v: Vec3) -> [u8; 3] {
     ]
 }
 #[derive(Debug, Clone)]
-pub enum BvhNode<'a, T: Boundable> {
+pub enum BvhNode<T: Boundable> {
     Leaf {
         bounding_box: Option<BoundingBox>,
-        shape: &'a T,
+        shape: T,
     },
 
     Branch {
         bounding_box: Option<BoundingBox>,
-        left: Box<BvhNode<'a, T>>,
-        right: Box<BvhNode<'a, T>>,
+        left: Box<BvhNode<T>>,
+        right: Box<BvhNode<T>>,
     },
 }
 
-impl<'a, T: Boundable> BvhNode<'a, T> {
-    pub fn create<R: Rng + ?Sized>(objects: &'a mut [T], rng: &mut R) -> Self {
+impl<'a, T: Boundable + Clone> BvhNode<T> {
+    pub fn create<R: Rng + ?Sized>(mut objects: Vec<T>, rng: &mut R) -> Self {
         assert!(!objects.is_empty());
         let n = objects.len();
 
         if n == 1 {
-            let shape = &objects[0];
+            let shape = objects.remove(0);
             let bounding_box = shape.bound();
             Self::Leaf {
                 shape,
@@ -57,8 +84,8 @@ impl<'a, T: Boundable> BvhNode<'a, T> {
                 (None, None) => Ordering::Equal,
             });
             let (objects_left, objects_right) = objects.split_at_mut(n / 2);
-            let left = Self::create(objects_left, rng);
-            let right = Self::create(objects_right, rng);
+            let left = Self::create(Vec::from(objects_left), rng);
+            let right = Self::create(Vec::from(objects_right), rng);
             let bounding_box =
                 if let (Some(lb), Some(rb)) = (left.bounding_box(), right.bounding_box()) {
                     Some(lb + rb)
@@ -100,7 +127,7 @@ impl<'a, T: Boundable> BvhNode<'a, T> {
     }
 }
 
-impl<'a> BvhNode<'a, Object> {
+impl BvhNode<Object> {
     pub fn scatter<R: Rng + ?Sized>(
         &self,
         ray: &Ray,
@@ -241,105 +268,6 @@ pub fn two_perlin_spheres<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
     world
 }
 
-pub fn cornell_box(aspect_ratio: f64) -> (Vec<Object>, Camera) {
-    let mut world = Vec::new();
-
-    world.push(Object {
-        shape: Shape::Rectangle {
-            axes: Axes::YZ,
-            lower_left: (0.0, 0.0),
-            upper_right: (555.0, 555.0),
-            height: 555.0,
-        }
-        .flipped(),
-        material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.12, 0.45, 0.15])),
-        },
-    });
-
-    world.push(Object {
-        shape: Shape::Rectangle {
-            axes: Axes::YZ,
-            lower_left: (0.0, 0.0),
-            upper_right: (555.0, 555.0),
-            height: 0.0,
-        },
-        material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.65, 0.05, 0.05])),
-        },
-    });
-
-    world.push(Object {
-        shape: Shape::Rectangle {
-            axes: Axes::XZ,
-            lower_left: (213.0, 227.0),
-            upper_right: (343.0, 332.0),
-            height: 554.0,
-        },
-        material: Material::DiffuseLight {
-            emit: Texture::SolidColor(Vec3([15.0, 15.0, 15.0])),
-        },
-    });
-
-    world.push(Object {
-        shape: Shape::Rectangle {
-            axes: Axes::XZ,
-            lower_left: (0.0, 0.0),
-            upper_right: (555.0, 555.0),
-            height: 0.0,
-        }
-        .flipped(),
-        material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
-        },
-    });
-
-    world.push(Object {
-        shape: Shape::Rectangle {
-            axes: Axes::XZ,
-            lower_left: (0.0, 0.0),
-            upper_right: (555.0, 555.0),
-            height: 555.0,
-        },
-        material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
-        },
-    });
-
-    world.push(Object {
-        shape: Shape::Rectangle {
-            axes: Axes::XY,
-            lower_left: (0.0, 0.0),
-            upper_right: (555.0, 555.0),
-            height: 555.0,
-        }
-        .flipped(),
-        material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
-        },
-    });
-
-    let look_from = Point3([278.0, 278.0, -800.0]);
-    let look_at = Point3([278.0, 278.0, 0.0]);
-    let vup = Vec3([0.0, 1.0, 0.0]);
-    let focus_distance = 1.0;
-    let aperture = 0.0;
-    let vfov = 40.0;
-
-    (
-        world,
-        Camera::new(CameraOptions {
-            origin: look_from,
-            direction: look_at - look_from,
-            vup,
-            focus_distance,
-            aperture,
-            vfov,
-            aspect_ratio,
-        }),
-    )
-}
-
 pub fn earth(center: Point3, radius: f64) -> Object {
     let texture = Texture::image("earthmap.jpg");
     Object {
@@ -436,61 +364,52 @@ impl Boundable for Object {
 
 pub enum RayHit {
     Scattered { ray: Ray, attenuation: Vec3 },
-
     Emitted(Vec3),
 }
 
 pub fn pixel<'a>(
     camera: &Camera,
-    world: &BvhNode<Object>,
-    background_color: Vec3,
+    world: &World,
     (row, column): (u32, u32),
-    (width, height): (u32, u32),
-    (open_time, close_time): (f64, f64),
-    samples: usize,
-    max_depth: usize,
+    ImageOptions {
+        width,
+        height,
+        samples_per_pixel,
+        max_depth,
+    }: ImageOptions,
 ) -> [u8; 3] {
-    let color_vec: Vec3 = (0..samples)
+    let color_vec: Vec3 = (0..samples_per_pixel)
         .into_par_iter()
         .map(|_| {
             let mut rng = rand::thread_rng();
             let u = (f64::from(row) + rng.gen::<f64>()) / f64::from(width - 1);
             let v = (f64::from(column) + rng.gen::<f64>()) / f64::from(height - 1);
-            let time = rng.gen_range(open_time, close_time);
             ray_color(
                 &camera.ray(u, v, &mut rng),
-                &world,
-                background_color,
-                time,
+                world,
+                camera.random_time(&mut rng),
                 &mut rng,
                 max_depth,
             )
         })
         .sum::<Vec3>()
-        / samples as f64;
+        / samples_per_pixel as f64;
     color(color_vec)
 }
 
-pub fn ray_color<R>(
-    ray: &Ray,
-    world: &BvhNode<Object>,
-    background_color: Vec3,
-    time: f64,
-    rng: &mut R,
-    depth: usize,
-) -> Vec3
+pub fn ray_color<R>(ray: &Ray, world: &World, time: f64, rng: &mut R, depth: usize) -> Vec3
 where
     R: Rng + ?Sized,
 {
     if depth == 0 {
         return Vec3([0.0, 0.0, 0.0]);
     }
-    match world.scatter(ray, 0.001, f64::INFINITY, time, rng) {
-        None => background_color,
+    match world.objects.scatter(ray, 0.001, f64::INFINITY, time, rng) {
+        None => world.background_color,
 
         Some(RayHit::Emitted(color)) => color,
         Some(RayHit::Scattered { attenuation, ray }) => {
-            attenuation * ray_color(&ray, world, background_color, time, rng, depth - 1)
+            attenuation * ray_color(&ray, world, time, rng, depth - 1)
         }
     }
 }
@@ -502,25 +421,29 @@ pub mod camera {
 
     #[derive(Debug, Clone, Copy)]
     pub struct Camera {
-        origin: Point3,
-        horizontal: Vec3,
-        vertical: Vec3,
-        lower_left_corner: Point3,
-        vfov: f64,
         aspect_ratio: f64,
-        onb: Onb,
+        horizontal: Vec3,
         lens_radius: f64,
+        lower_left_corner: Point3,
+        onb: Onb,
+        origin: Point3,
+        shutter_close: f64,
+        shutter_open: f64,
+        vertical: Vec3,
+        vfov: f64,
     }
 
     impl Camera {
         pub fn new(
             CameraOptions {
-                origin,
                 aperture,
-                direction,
-                vfov,
-                focus_distance,
                 aspect_ratio,
+                focus_distance,
+                looking_at,
+                origin,
+                shutter_close,
+                shutter_open,
+                vfov,
                 vup,
             }: CameraOptions,
         ) -> Self {
@@ -528,7 +451,7 @@ pub mod camera {
             let viewport_height = 2.0 * h;
             let viewport_width = viewport_height * aspect_ratio;
 
-            let onb = Onb::from23(vup, -direction);
+            let onb = Onb::from23(vup, origin - looking_at);
 
             let horizontal = *onb[0] * viewport_width * focus_distance;
             let vertical = *onb[1] * viewport_height * focus_distance;
@@ -537,14 +460,16 @@ pub mod camera {
             let lens_radius = aperture / 2.0;
 
             Self {
-                origin,
-                horizontal,
-                vertical,
-                lower_left_corner,
-                vfov,
                 aspect_ratio,
-                onb,
+                horizontal,
                 lens_radius,
+                lower_left_corner,
+                onb,
+                origin,
+                shutter_close,
+                shutter_open,
+                vertical,
+                vfov,
             }
         }
 
@@ -556,14 +481,21 @@ pub mod camera {
                 (self.lower_left_corner + self.horizontal * s + self.vertical * t) - origin;
             Ray { origin, direction }
         }
+
+        pub fn random_time<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
+            rng.gen_range(self.shutter_open, self.shutter_close)
+        }
     }
 
+    #[derive(Debug, Clone, Copy)]
     pub struct CameraOptions {
-        pub origin: Point3,
         pub aperture: f64,
-        pub focus_distance: f64,
         pub aspect_ratio: f64,
-        pub direction: Vec3,
+        pub focus_distance: f64,
+        pub looking_at: Point3,
+        pub origin: Point3,
+        pub shutter_close: f64,
+        pub shutter_open: f64,
         pub vfov: f64,
         pub vup: Vec3,
     }
