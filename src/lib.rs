@@ -222,7 +222,7 @@ pub fn two_perlin_spheres<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
             radius: 1000.0,
         },
         material: Material::Lambertian {
-            albedo: Texture::Noise(perlin.clone()),
+            texture: Texture::Noise(perlin.clone()),
         },
     };
 
@@ -232,7 +232,7 @@ pub fn two_perlin_spheres<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
             radius: 2.0,
         },
         material: Material::Lambertian {
-            albedo: Texture::Noise(perlin.clone()),
+            texture: Texture::Noise(perlin.clone()),
         },
     };
 
@@ -273,7 +273,7 @@ pub fn earth(center: Point3, radius: f64) -> Object {
     Object {
         shape: Shape::Sphere { center, radius },
 
-        material: Material::Lambertian { albedo: texture },
+        material: Material::Lambertian { texture },
     }
 }
 
@@ -291,7 +291,7 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
         },
 
         material: Material::Lambertian {
-            albedo: Texture::Checkered {
+            texture: Texture::Checkered {
                 even: Box::new(Texture::SolidColor(Vec3([0.2, 0.3, 0.1]))),
                 odd: Box::new(Texture::SolidColor(Vec3([0.9, 0.9, 0.9]))),
             },
@@ -312,10 +312,10 @@ pub fn random_world<R: Rng + ?Sized>(rng: &mut R) -> Vec<Object> {
                 let roll: f64 = rng.gen();
                 let (center2, material) = if roll < 0.8 {
                     let center2 = center + Vec3([0.0, rng.gen_range(0.0, 0.5), 0.0]);
-                    let albedo = Texture::SolidColor(
+                    let texture = Texture::SolidColor(
                         Vec3::random(0.0..1.0, rng) + Vec3::random(0.0..1.0, rng),
                     );
-                    (center2, Material::Lambertian { albedo })
+                    (center2, Material::Lambertian { texture })
                 } else if roll < 0.95 {
                     let albedo = Vec3::random(0.5..1.0, rng);
                     let fuzz = rng.gen_range(0.0, 0.5);

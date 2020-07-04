@@ -1,11 +1,11 @@
-use super::geometry::{random_unit_vector, Face, IntersectionPoint, Point3, Ray, UnitVec3, Vec3};
+use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3, Vec3};
 use crate::textures::Texture;
 use crate::RayHit;
 use rand::Rng;
 
 #[derive(Clone)]
 pub enum Material {
-    Lambertian { albedo: Texture },
+    Lambertian { texture: Texture },
 
     Metal { albedo: Vec3, fuzz: f64 },
 
@@ -24,7 +24,7 @@ impl Material {
 
     pub fn scatter<R: Rng + ?Sized>(&self, p: &IntersectionPoint, rng: &mut R) -> RayHit {
         match self {
-            Material::Lambertian { albedo } => {
+            Material::Lambertian { texture } => {
                 let direction = *random_unit_vector(rng) + *p.normal;
                 let scattered = Ray {
                     origin: p.point,
@@ -32,7 +32,7 @@ impl Material {
                 };
 
                 RayHit::Scattered {
-                    attenuation: albedo.color_at(
+                    attenuation: texture.color_at(
                         p.surface_coordinates.0,
                         p.surface_coordinates.1,
                         &p.point,
