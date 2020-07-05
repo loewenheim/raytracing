@@ -41,11 +41,100 @@ pub enum Shape {
     },
 
     Flipped(Box<Shape>),
+
+    Box {
+        min: Point3,
+        max: Point3,
+        sides: Vec<Shape>,
+    },
 }
 
 impl Shape {
     pub fn flipped(self) -> Self {
         Self::Flipped(Box::new(self))
+    }
+
+    pub fn rectangle(lower_left: Point3, upper_right: Point3) -> Self {
+        let axes = if lower_left[0] == upper_right[0] {
+            Axes::YZ
+        } else if lower_left[1] == upper_right[1] {
+            Axes::XZ
+        } else {
+            Axes::XY
+        };
+
+        let (p1, p2, o) = axes.coords();
+
+        let height = lower_left[o];
+        let lower_left = (lower_left[p1], lower_left[p2]);
+        let upper_right = (upper_right[p1], upper_right[p2]);
+
+        Self::Rectangle {
+            lower_left,
+            upper_right,
+            axes,
+            height,
+        }
+    }
+
+    pub fn new_box(min: Point3, max: Point3) -> Self {
+        let mut sides = Vec::new();
+
+        let Point3([x0, y0, z0]) = min;
+        let Point3([x1, y1, z1]) = max;
+
+        sides.push(
+            Shape::Rectangle {
+                height: x0,
+                lower_left: (y0, z0),
+                upper_right: (y1, z1),
+                axes: Axes::YZ,
+            }
+            .flipped(),
+        );
+
+        sides.push(Shape::Rectangle {
+            height: x1,
+            lower_left: (y0, z0),
+            upper_right: (y1, z1),
+            axes: Axes::YZ,
+        });
+
+        sides.push(
+            Shape::Rectangle {
+                height: y0,
+                lower_left: (x0, z0),
+                upper_right: (x1, z1),
+                axes: Axes::XZ,
+            }
+            .flipped(),
+        );
+
+        sides.push(Shape::Rectangle {
+            height: y1,
+            lower_left: (x0, z0),
+            upper_right: (x1, z1),
+            axes: Axes::XZ,
+        });
+
+        sides.push(
+            Shape::Rectangle {
+                height: z0,
+                lower_left: (x0, y0),
+                upper_right: (x1, y1),
+                axes: Axes::XY,
+            }
+            .flipped(),
+        );
+
+        sides.push(Shape::Rectangle {
+            height: z1,
+            lower_left: (x0, y0),
+            upper_right: (x1, y1),
+            axes: Axes::XY,
+        });
+
+        Self::Box { min, max, sides }
     }
 
     pub fn sphere(
@@ -158,11 +247,7 @@ impl Intersection for Shape {
                 height,
                 axes,
             } => {
-                let (p1, p2, o) = match axes {
-                    Axes::XY => (0, 1, 2),
-                    Axes::XZ => (0, 2, 1),
-                    Axes::YZ => (1, 2, 0),
-                };
+                let (p1, p2, o) = axes.coords();
 
                 let t = (height - ray.origin[o]) / ray.direction[o];
                 if t < tmin || t > tmax {
@@ -197,7 +282,29 @@ impl Intersection for Shape {
                         ..ip
                     })
             }
+
+            Self::Box { sides, .. } => sides.intersect(ray, tmin, tmax, time),
         }
+    }
+}
+
+impl<I: Intersection> Intersection for Vec<I> {
+    fn intersect(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        mut tmax: f64,
+        time: f64,
+    ) -> Option<IntersectionPoint> {
+        let mut intersection_point = None;
+        for i in self.iter() {
+            if let Some(ip) = i.intersect(ray, tmin, tmax, time) {
+                tmax = ip.t;
+                intersection_point = Some(ip);
+            }
+        }
+
+        intersection_point
     }
 }
 
@@ -237,11 +344,7 @@ impl Boundable for Shape {
                 height,
                 axes,
             } => {
-                let (p1, p2, o) = match axes {
-                    Axes::XY => (0, 1, 2),
-                    Axes::XZ => (0, 2, 1),
-                    Axes::YZ => (1, 2, 0),
-                };
+                let (p1, p2, o) = axes.coords();
 
                 let mut min = Point3::default();
                 let mut max = Point3::default();
@@ -258,6 +361,11 @@ impl Boundable for Shape {
             }
 
             Self::Flipped(inner) => inner.bound(),
+
+            Self::Box { min, max, .. } => Some(BoundingBox {
+                min: *min,
+                max: *max,
+            }),
         }
     }
 }
@@ -286,6 +394,16 @@ pub enum Axes {
     XY,
     XZ,
     YZ,
+}
+
+impl Axes {
+    fn coords(&self) -> (usize, usize, usize) {
+        match self {
+            Axes::XY => (0, 1, 2),
+            Axes::XZ => (0, 2, 1),
+            Axes::YZ => (1, 2, 0),
+        }
+    }
 }
 /// Contains information about the intersection of a ray
 /// with an object: the actual point, the normal vector

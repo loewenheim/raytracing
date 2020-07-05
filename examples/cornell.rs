@@ -6,8 +6,8 @@ use raytracing::textures::Texture;
 use raytracing::{pixels, ImageOptions, Object, World};
 
 fn main() {
-    const ASPECT_RATIO: f64 = 16.0 / 9.0;
-    const IMAGE_WIDTH: u32 = 1280;
+    const ASPECT_RATIO: f64 = 1.0;
+    const IMAGE_WIDTH: u32 = 500;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
     const MAX_DEPTH: usize = 50;
@@ -78,8 +78,7 @@ fn main() {
             lower_left: (0.0, 0.0),
             upper_right: (555.0, 555.0),
             height: 0.0,
-        }
-        .flipped(),
+        },
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
@@ -91,7 +90,8 @@ fn main() {
             lower_left: (0.0, 0.0),
             upper_right: (555.0, 555.0),
             height: 555.0,
-        },
+        }
+        .flipped(),
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
@@ -105,6 +105,22 @@ fn main() {
             height: 555.0,
         }
         .flipped(),
+        material: Material::Lambertian {
+            texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+        },
+    });
+
+    objects.push(Object {
+        shape: Shape::new_box(Point3([130.0, 0.0, 65.0]), Point3([295.0, 165.0, 230.0])),
+
+        material: Material::Lambertian {
+            texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+        },
+    });
+
+    objects.push(Object {
+        shape: Shape::new_box(Point3([265.0, 0.0, 295.0]), Point3([430.0, 330.0, 460.0])),
+
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
