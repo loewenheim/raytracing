@@ -3,7 +3,7 @@ use raytracing::camera::{Camera, CameraOptions};
 use raytracing::geometry::{Axes, Point3, Shape, Vec3};
 use raytracing::materials::Material;
 use raytracing::textures::Texture;
-use raytracing::{pixels, BvhNode, ImageOptions, Object, World};
+use raytracing::{pixels, ImageOptions, Object, World};
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
@@ -44,7 +44,7 @@ fn main() {
         }
         .flipped(),
         material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.12, 0.45, 0.15])),
+            texture: Texture::SolidColor(Vec3([0.12, 0.45, 0.15])),
         },
     });
 
@@ -56,7 +56,7 @@ fn main() {
             height: 0.0,
         },
         material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.65, 0.05, 0.05])),
+            texture: Texture::SolidColor(Vec3([0.65, 0.05, 0.05])),
         },
     });
 
@@ -81,7 +81,7 @@ fn main() {
         }
         .flipped(),
         material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+            texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
     });
 
@@ -93,7 +93,7 @@ fn main() {
             height: 555.0,
         },
         material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+            texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
     });
 
@@ -106,15 +106,11 @@ fn main() {
         }
         .flipped(),
         material: Material::Lambertian {
-            albedo: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
+            texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
     });
 
-    let world = World {
-        objects: BvhNode::create(objects, &mut rng),
-        background_color: Vec3([0.0, 0.0, 0.0]),
-    };
-
+    let world = World::new(objects, Vec3([0.0, 0.0, 0.0]), &mut rng);
     let image: RgbImage = ImageBuffer::from_raw(
         IMAGE_WIDTH,
         IMAGE_HEIGHT,

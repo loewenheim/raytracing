@@ -10,7 +10,10 @@ pub enum Texture {
         odd: Box<Texture>,
         even: Box<Texture>,
     },
-    Noise(Arc<PerlinNoise>),
+    Noise {
+        scale: f64,
+        noise: Arc<PerlinNoise>,
+    },
     Image(RgbImage),
 }
 
@@ -30,7 +33,9 @@ impl Texture {
                     even.color_at(u, v, p)
                 }
             }
-            Self::Noise(perlin) => Vec3([1.0, 1.0, 1.0]) * perlin.get3d(p.0),
+            Self::Noise { noise, scale } => {
+                Vec3([1.0, 1.0, 1.0]) * noise.get3d([p[0] * scale, p[1] * scale, p[2] * scale])
+            }
             Self::Image(image) => {
                 let u = u.max(0.0).min(1.0);
                 let v = 1.0 - v.max(0.0).min(1.0);
