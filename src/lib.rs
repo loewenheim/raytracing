@@ -101,7 +101,7 @@ impl World {
 enum BvhNode<T: Boundable> {
     Leaf {
         bounding_box: Option<BoundingBox>,
-        shape: T,
+        object: T,
     },
 
     Branch {
@@ -111,16 +111,16 @@ enum BvhNode<T: Boundable> {
     },
 }
 
-impl<'a, T: Boundable + Clone> BvhNode<T> {
+impl<T: Boundable + Clone> BvhNode<T> {
     fn create<R: Rng + ?Sized>(mut objects: Vec<T>, rng: &mut R) -> Self {
         assert!(!objects.is_empty());
         let n = objects.len();
 
         if n == 1 {
-            let shape = objects.remove(0);
-            let bounding_box = shape.bound();
+            let object = objects.remove(0);
+            let bounding_box = object.bound();
             Self::Leaf {
-                shape,
+                object,
                 bounding_box,
             }
         } else {
@@ -186,7 +186,7 @@ impl BvhNode<Object> {
             }
         }
         match self {
-            Self::Leaf { shape, .. } => (*shape).scatter(ray, tmin, tmax, time, rng),
+            Self::Leaf { object, .. } => (*object).scatter(ray, tmin, tmax, time, rng),
             Self::Branch { left, right, .. } => {
                 let mut scattered = None;
                 if let Some((t, new_scattered)) = (*left).scatter_(ray, tmin, tmax, time, rng) {
