@@ -1,5 +1,5 @@
 use image::{ImageBuffer, RgbImage};
-use perlin_noise::PerlinNoise;
+use noise::Perlin;
 use raytracing::camera::{Camera, CameraOptions};
 use raytracing::geometry::{Axes, Point3, Shape, Vec3};
 use raytracing::materials::Material;
@@ -37,7 +37,7 @@ fn main() {
 
     let mut objects = Vec::new();
 
-    let perlin = Arc::new(PerlinNoise::new());
+    let perlin = Arc::new(Perlin::new());
     objects.push(Object {
         shape: Shape::Sphere {
             center: Point3([0.0, -1000.0, 0.0]),

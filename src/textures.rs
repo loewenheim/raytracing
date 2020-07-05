@@ -1,6 +1,6 @@
 use super::geometry::{Point3, Vec3};
 use image::RgbImage;
-use perlin_noise::PerlinNoise;
+use noise::NoiseFn;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -12,7 +12,7 @@ pub enum Texture {
     },
     Noise {
         scale: f64,
-        noise: Arc<PerlinNoise>,
+        noise: Arc<dyn NoiseFn<[f64; 3]> + Sync + Send>,
     },
     Image(RgbImage),
 }
@@ -34,7 +34,7 @@ impl Texture {
                 }
             }
             Self::Noise { noise, scale } => {
-                Vec3([1.0, 1.0, 1.0]) * noise.get3d([p[0] * scale, p[1] * scale, p[2] * scale])
+                Vec3([1.0, 1.0, 1.0]) * noise.get([p[0] * scale, p[1] * scale, p[2] * scale])
             }
             Self::Image(image) => {
                 let u = u.max(0.0).min(1.0);
