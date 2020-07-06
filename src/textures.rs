@@ -1,6 +1,7 @@
 use super::geometry::{Point3, Vec3};
 use image::RgbImage;
 use noise::NoiseFn;
+use std::fmt;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -15,6 +16,25 @@ pub enum Texture {
         noise: Arc<dyn NoiseFn<[f64; 3]> + Sync + Send>,
     },
     Image(RgbImage),
+}
+
+impl fmt::Debug for Texture {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SolidColor(vec) => f.debug_tuple("SolidColor").field(vec).finish(),
+            Self::Checkered { odd, even } => f
+                .debug_struct("Checkered")
+                .field("odd", odd)
+                .field("even", even)
+                .finish(),
+            Self::Noise { scale, .. } => f
+                .debug_struct("Noise")
+                .field("scale", scale)
+                .field("noise", &format!("<noise function>"))
+                .finish(),
+            Self::Image(image) => f.debug_tuple("Image").field(image).finish(),
+        }
+    }
 }
 
 impl Texture {

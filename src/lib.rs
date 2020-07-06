@@ -82,7 +82,7 @@ pub struct ImageOptions {
     pub max_depth: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct World {
     objects: BvhNode<Object>,
     background_color: Vec3,
@@ -203,7 +203,7 @@ impl BvhNode<Object> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Object {
     pub shape: Shape,
     pub material: Material,

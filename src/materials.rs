@@ -3,7 +3,7 @@ use crate::textures::Texture;
 use crate::RayHit;
 use rand::Rng;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Material {
     Lambertian { texture: Texture },
 
