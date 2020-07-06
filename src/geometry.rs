@@ -14,6 +14,10 @@ pub trait Boundable {
     fn bound(&self) -> Option<BoundingBox>;
 }
 
+pub trait Rotate {
+    fn rotate(self, axis: Axis, angle: f64) -> Self;
+}
+
 #[derive(Clone, Debug)]
 pub enum Shape {
     Sphere {
@@ -47,11 +51,29 @@ pub enum Shape {
         max: Point3,
         sides: Vec<Shape>,
     },
+
+    Translate {
+        inner: Box<Shape>,
+        offset: Vec3,
+    },
+
+    Rotate {
+        axis: Axis,
+        inner: Box<Shape>,
+        angle: f64,
+    },
 }
 
 impl Shape {
     pub fn flipped(self) -> Self {
         Self::Flipped(Box::new(self))
+    }
+
+    pub fn translate(self, offset: Vec3) -> Self {
+        Self::Translate {
+            inner: Box::new(self),
+            offset,
+        }
     }
 
     pub fn rectangle(lower_left: Point3, upper_right: Point3) -> Self {
@@ -284,6 +306,35 @@ impl Intersection for Shape {
             }
 
             Self::Box { sides, .. } => sides.intersect(ray, tmin, tmax, time),
+            Self::Translate { inner, offset } => {
+                let moved_ray = Ray {
+                    origin: ray.origin - *offset,
+                    ..*ray
+                };
+
+                inner
+                    .intersect(&moved_ray, tmin, tmax, time)
+                    .map(|ip| IntersectionPoint {
+                        point: ip.point + *offset,
+                        ..ip
+                    })
+            }
+
+            Self::Rotate { axis, angle, inner } => {
+                let rotated_ray = Ray {
+                    origin: ray.origin.rotate(*axis, -angle),
+                    direction: ray.direction.rotate(*axis, -angle),
+                };
+
+                inner
+                    .intersect(&rotated_ray, tmin, tmax, time)
+                    .map(|ip| IntersectionPoint {
+                        point: ip.point.rotate(*axis, *angle),
+                        normal: ip.normal.rotate(*axis, *angle),
+                        in_vec: ip.in_vec.rotate(*axis, *angle),
+                        ..ip
+                    })
+            }
         }
     }
 }
@@ -366,6 +417,47 @@ impl Boundable for Shape {
                 min: *min,
                 max: *max,
             }),
+
+            Self::Translate { inner, offset } => {
+                inner.bound().map(|BoundingBox { min, max }| BoundingBox {
+                    min: min + *offset,
+                    max: max + *offset,
+                })
+            }
+
+            Self::Rotate { inner, axis, angle } => inner.bound().map(|bb| {
+                let mut min = Point3([f64::INFINITY, f64::INFINITY, f64::INFINITY]);
+                let mut max = Point3([f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY]);
+
+                for i in 0..2 {
+                    for j in 0..2 {
+                        for k in 0..2 {
+                            let x = i as f64 * bb.max[0] + (1.0 - i as f64) * bb.min[0];
+                            let y = j as f64 * bb.max[1] + (1.0 - j as f64) * bb.min[1];
+                            let z = k as f64 * bb.max[2] + (1.0 - k as f64) * bb.min[2];
+
+                            let tester = Vec3([x, y, z]).rotate(*axis, *angle);
+
+                            for c in 0..3 {
+                                min[c] = min[c].min(tester[c]);
+                                max[c] = max[c].max(tester[c]);
+                            }
+                        }
+                    }
+                }
+
+                BoundingBox { min, max }
+            }),
+        }
+    }
+}
+
+impl Rotate for Shape {
+    fn rotate(self, axis: Axis, angle: f64) -> Self {
+        Self::Rotate {
+            inner: Box::new(self),
+            angle,
+            axis,
         }
     }
 }
@@ -387,6 +479,13 @@ impl<T: Boundable> Boundable for Vec<T> {
 
         result
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -440,6 +539,25 @@ pub struct Point3(pub [f64; 3]);
 impl Point3 {
     pub fn dist(&self, other: &Point3) -> f64 {
         (*self - *other).norm()
+    }
+}
+
+impl Rotate for Point3 {
+    fn rotate(self, axis: Axis, angle: f64) -> Self {
+        let mut out = self;
+        let angle = angle.to_radians();
+        let cos = angle.cos();
+        let sin = angle.sin();
+        let (c0, c1) = match axis {
+            Axis::X => (1, 2),
+            Axis::Y => (2, 0),
+            Axis::Z => (0, 1),
+        };
+
+        out[c0] = self[c0] * cos - self[c1] * sin;
+        out[c1] = self[c0] * sin + self[c1] * cos;
+
+        out
     }
 }
 
@@ -500,6 +618,25 @@ impl Vec3 {
     pub fn random<R: Rng + ?Sized>(range: Range<f64>, rng: &mut R) -> Self {
         let range = Uniform::from(range);
         Vec3([range.sample(rng), range.sample(rng), range.sample(rng)])
+    }
+}
+
+impl Rotate for Vec3 {
+    fn rotate(self, axis: Axis, angle: f64) -> Self {
+        let mut out = self;
+        let angle = angle.to_radians();
+        let cos = angle.cos();
+        let sin = angle.sin();
+        let (c0, c1) = match axis {
+            Axis::X => (1, 2),
+            Axis::Y => (2, 0),
+            Axis::Z => (0, 1),
+        };
+
+        out[c0] = self[c0] * cos - self[c1] * sin;
+        out[c1] = self[c0] * sin + self[c1] * cos;
+
+        out
     }
 }
 
@@ -650,6 +787,12 @@ impl Sum<Vec3> for Vec3 {
 
 #[derive(Copy, Clone, Debug)]
 pub struct UnitVec3(Vec3);
+
+impl UnitVec3 {
+    pub fn rotate(self, axis: Axis, angle: f64) -> Self {
+        Self(self.0.rotate(axis, angle))
+    }
+}
 
 impl Deref for UnitVec3 {
     type Target = Vec3;
@@ -878,5 +1021,36 @@ mod test {
 
             assert!((v.norm() - 1.0).abs() <= 1e-10);
         }
+    }
+
+    #[test]
+    fn rotated_sphere() {
+        let sphere = Shape::Sphere {
+            center: Point3([0.0, 0.0, 0.0]),
+            radius: 2.0,
+        }
+        .rotate(Axis::Y, 45.0);
+
+        let ray = Ray {
+            origin: Point3([10.0, 0.0, 0.0]),
+            direction: Vec3([-2.0, 0.0, 0.0]),
+        };
+
+        assert!(sphere.intersect(&ray, 0.0, 10.0, 0.0).is_some())
+    }
+
+    #[test]
+    fn rotated_box() {
+        let my_box = Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([10.0, 10.0, 10.0]))
+            .rotate(Axis::Y, 45.0);
+        let ray = Ray {
+            origin: Point3([-10.0, 5.0, 12.0]),
+            direction: Vec3([1.0, 0.0, -1.0]),
+        };
+        let ip = my_box.intersect(&ray, 0.0, 20.0, 0.0);
+
+        println!("{:?}", ip);
+
+        assert!(ip.is_some());
     }
 }
