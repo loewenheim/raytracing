@@ -62,6 +62,11 @@ pub enum Shape {
         inner: Box<Shape>,
         angle: f64,
     },
+
+    ConstantMedium {
+        boundary: Box<Shape>,
+        density: f64,
+    },
 }
 
 impl Shape {
@@ -335,6 +340,48 @@ impl Intersection for Shape {
                         ..ip
                     })
             }
+
+            Self::ConstantMedium {
+                boundary,
+                density,
+            } => boundary
+                .intersect(ray, f64::NEG_INFINITY, f64::INFINITY, time)
+                .and_then(|mut ip1| {
+                    boundary
+                        .intersect(ray, ip1.t + 0.001, f64::INFINITY, time)
+                        .and_then(|mut ip2| {
+                            let mut rng = rand::thread_rng();
+                            ip1.t = ip1.t.max(tmin);
+                            ip2.t = ip2.t.min(tmax);
+
+                            if ip1.t >= ip2.t {
+                                return None;
+                            }
+
+                            ip1.t = ip1.t.max(0.0);
+
+                            let length = ray.direction.norm();
+                            let distance_inside_boundary = (ip2.t - ip1.t) * length;
+                            let hit_distance = -1.0/density * rng.gen::<f64>().ln();
+
+                            if hit_distance > distance_inside_boundary {
+                                return None;
+                            }
+
+                            let t = ip1.t + hit_distance / length;
+                            let point = ray.at(t);
+
+                            let normal = Vec3([1.0, 0.0, 0.0]).normed();
+
+                            Some(IntersectionPoint {
+                                point,
+                                normal,
+                                t,
+                                in_vec: ray.direction.normed(),
+                                surface_coordinates: (0.0, 0.0),
+                            })
+                        })
+                }),
         }
     }
 }
@@ -448,6 +495,8 @@ impl Boundable for Shape {
 
                 BoundingBox { min, max }
             }),
+
+            Self::ConstantMedium { boundary, .. } => boundary.bound(),
         }
     }
 }

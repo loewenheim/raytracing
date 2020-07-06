@@ -12,6 +12,8 @@ pub enum Material {
     Dielectric { albedo: Vec3, refraction_index: f64 },
 
     DiffuseLight { emit: Texture },
+
+    Isotropic { texture: Texture },
 }
 
 impl Material {
@@ -92,6 +94,19 @@ impl Material {
                 p.surface_coordinates.1,
                 &p.point,
             )),
+
+            Material::Isotropic { texture } => RayHit::Scattered {
+                ray: Ray {
+                    origin: p.point,
+                    direction: *random_unit_vector(rng),
+                },
+
+                attenuation: texture.color_at(
+                    p.surface_coordinates.0,
+                    p.surface_coordinates.1,
+                    &p.point,
+                ),
+            },
         }
     }
 }
