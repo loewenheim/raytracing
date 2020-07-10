@@ -87,9 +87,9 @@ fn pixel<'a>(
 
     progress_bar.inc(1);
     [
-        (v[0].max(0.0).min(1.0) * 255.999) as u8,
-        (v[1].max(0.0).min(1.0) * 255.999) as u8,
-        (v[2].max(0.0).min(1.0) * 255.999) as u8,
+        (v[0].max(0.0).min(1.0).sqrt() * 255.999) as u8,
+        (v[1].max(0.0).min(1.0).sqrt() * 255.999) as u8,
+        (v[2].max(0.0).min(1.0).sqrt() * 255.999) as u8,
     ]
 }
 
