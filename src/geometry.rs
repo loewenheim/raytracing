@@ -1,21 +1,35 @@
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
 use std::f64::consts::PI;
+use std::fmt::Debug;
 use std::iter::Sum;
 use std::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Range, Sub, SubAssign,
 };
 
-pub trait Intersection {
+pub trait Geometry: Debug + Send + Sync {
     fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint>;
-}
-
-pub trait Boundable {
     fn bound(&self) -> Option<BoundingBox>;
+    fn flip(self) -> Flipped<Self>
+    where
+        Self: Sized,
+    {
+        Flipped(self)
+    }
+    fn translate(self, offset: Vec3) -> Translated<Self>
+    where
+        Self: Sized,
+    {
+        Translated {
+            inner: self,
+            offset,
+        }
+    }
 }
 
 pub trait Rotate {
-    fn rotate(self, axis: Axis, angle: f64) -> Self;
+    type Output;
+    fn rotate(self, axis: Axis, angle: f64) -> Self::Output;
 }
 
 #[derive(Clone, Debug)]
@@ -43,44 +57,9 @@ pub enum Shape {
         upper_right: (f64, f64),
         height: f64,
     },
-
-    Flipped(Box<Shape>),
-
-    Box {
-        min: Point3,
-        max: Point3,
-        sides: Vec<Shape>,
-    },
-
-    Translate {
-        inner: Box<Shape>,
-        offset: Vec3,
-    },
-
-    Rotate {
-        axis: Axis,
-        inner: Box<Shape>,
-        angle: f64,
-    },
-
-    ConstantMedium {
-        boundary: Box<Shape>,
-        density: f64,
-    },
 }
 
 impl Shape {
-    pub fn flipped(self) -> Self {
-        Self::Flipped(Box::new(self))
-    }
-
-    pub fn translate(self, offset: Vec3) -> Self {
-        Self::Translate {
-            inner: Box::new(self),
-            offset,
-        }
-    }
-
     pub fn rectangle(lower_left: Point3, upper_right: Point3) -> Self {
         let axes = if lower_left[0] == upper_right[0] {
             Axes::YZ
@@ -102,66 +81,6 @@ impl Shape {
             axes,
             height,
         }
-    }
-
-    pub fn new_box(min: Point3, max: Point3) -> Self {
-        let mut sides = Vec::new();
-
-        let Point3([x0, y0, z0]) = min;
-        let Point3([x1, y1, z1]) = max;
-
-        sides.push(
-            Shape::Rectangle {
-                height: x0,
-                lower_left: (y0, z0),
-                upper_right: (y1, z1),
-                axes: Axes::YZ,
-            }
-            .flipped(),
-        );
-
-        sides.push(Shape::Rectangle {
-            height: x1,
-            lower_left: (y0, z0),
-            upper_right: (y1, z1),
-            axes: Axes::YZ,
-        });
-
-        sides.push(
-            Shape::Rectangle {
-                height: y0,
-                lower_left: (x0, z0),
-                upper_right: (x1, z1),
-                axes: Axes::XZ,
-            }
-            .flipped(),
-        );
-
-        sides.push(Shape::Rectangle {
-            height: y1,
-            lower_left: (x0, z0),
-            upper_right: (x1, z1),
-            axes: Axes::XZ,
-        });
-
-        sides.push(
-            Shape::Rectangle {
-                height: z0,
-                lower_left: (x0, y0),
-                upper_right: (x1, y1),
-                axes: Axes::XY,
-            }
-            .flipped(),
-        );
-
-        sides.push(Shape::Rectangle {
-            height: z1,
-            lower_left: (x0, y0),
-            upper_right: (x1, y1),
-            axes: Axes::XY,
-        });
-
-        Self::Box { min, max, sides }
     }
 
     pub fn sphere(
@@ -190,7 +109,7 @@ impl Shape {
     }
 }
 
-impl Intersection for Shape {
+impl Geometry for Shape {
     fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
         match self {
             Shape::Sphere { center, radius } => {
@@ -300,113 +219,9 @@ impl Intersection for Shape {
                     in_vec: ray.direction.normed(),
                 })
             }
-
-            Self::Flipped(inner) => {
-                inner
-                    .intersect(ray, tmin, tmax, time)
-                    .map(|ip| IntersectionPoint {
-                        normal: -ip.normal,
-                        ..ip
-                    })
-            }
-
-            Self::Box { sides, .. } => sides.intersect(ray, tmin, tmax, time),
-            Self::Translate { inner, offset } => {
-                let moved_ray = Ray {
-                    origin: ray.origin - *offset,
-                    ..*ray
-                };
-
-                inner
-                    .intersect(&moved_ray, tmin, tmax, time)
-                    .map(|ip| IntersectionPoint {
-                        point: ip.point + *offset,
-                        ..ip
-                    })
-            }
-
-            Self::Rotate { axis, angle, inner } => {
-                let rotated_ray = Ray {
-                    origin: ray.origin.rotate(*axis, -angle),
-                    direction: ray.direction.rotate(*axis, -angle),
-                };
-
-                inner
-                    .intersect(&rotated_ray, tmin, tmax, time)
-                    .map(|ip| IntersectionPoint {
-                        point: ip.point.rotate(*axis, *angle),
-                        normal: ip.normal.rotate(*axis, *angle),
-                        in_vec: ip.in_vec.rotate(*axis, *angle),
-                        ..ip
-                    })
-            }
-
-            Self::ConstantMedium {
-                boundary,
-                density,
-            } => boundary
-                .intersect(ray, f64::NEG_INFINITY, f64::INFINITY, time)
-                .and_then(|mut ip1| {
-                    boundary
-                        .intersect(ray, ip1.t + 0.001, f64::INFINITY, time)
-                        .and_then(|mut ip2| {
-                            let mut rng = rand::thread_rng();
-                            ip1.t = ip1.t.max(tmin);
-                            ip2.t = ip2.t.min(tmax);
-
-                            if ip1.t >= ip2.t {
-                                return None;
-                            }
-
-                            ip1.t = ip1.t.max(0.0);
-
-                            let length = ray.direction.norm();
-                            let distance_inside_boundary = (ip2.t - ip1.t) * length;
-                            let hit_distance = -1.0/density * rng.gen::<f64>().ln();
-
-                            if hit_distance > distance_inside_boundary {
-                                return None;
-                            }
-
-                            let t = ip1.t + hit_distance / length;
-                            let point = ray.at(t);
-
-                            let normal = Vec3([1.0, 0.0, 0.0]).normed();
-
-                            Some(IntersectionPoint {
-                                point,
-                                normal,
-                                t,
-                                in_vec: ray.direction.normed(),
-                                surface_coordinates: (0.0, 0.0),
-                            })
-                        })
-                }),
         }
     }
-}
 
-impl<I: Intersection> Intersection for Vec<I> {
-    fn intersect(
-        &self,
-        ray: &Ray,
-        tmin: f64,
-        mut tmax: f64,
-        time: f64,
-    ) -> Option<IntersectionPoint> {
-        let mut intersection_point = None;
-        for i in self.iter() {
-            if let Some(ip) = i.intersect(ray, tmin, tmax, time) {
-                tmax = ip.t;
-                intersection_point = Some(ip);
-            }
-        }
-
-        intersection_point
-    }
-}
-
-impl Boundable for Shape {
     fn bound(&self) -> Option<BoundingBox> {
         match self {
             Shape::Plane { .. } => None,
@@ -457,61 +272,266 @@ impl Boundable for Shape {
 
                 Some(BoundingBox { min, max })
             }
+        }
+    }
+}
 
-            Self::Flipped(inner) => inner.bound(),
+#[derive(Debug)]
+pub struct MyBox {
+    min: Point3,
+    max: Point3,
+    sides: Vec<Box<dyn Geometry>>,
+}
 
-            Self::Box { min, max, .. } => Some(BoundingBox {
-                min: *min,
-                max: *max,
-            }),
+impl MyBox {
+    pub fn new(min: Point3, max: Point3) -> Self {
+        let mut sides = Vec::new();
 
-            Self::Translate { inner, offset } => {
-                inner.bound().map(|BoundingBox { min, max }| BoundingBox {
-                    min: min + *offset,
-                    max: max + *offset,
-                })
+        let Point3([x0, y0, z0]) = min;
+        let Point3([x1, y1, z1]) = max;
+
+        sides.push(Box::new(
+            Shape::Rectangle {
+                height: x0,
+                lower_left: (y0, z0),
+                upper_right: (y1, z1),
+                axes: Axes::YZ,
             }
+            .flip(),
+        ) as Box<dyn Geometry>);
 
-            Self::Rotate { inner, axis, angle } => inner.bound().map(|bb| {
-                let mut min = Point3([f64::INFINITY, f64::INFINITY, f64::INFINITY]);
-                let mut max = Point3([f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY]);
+        sides.push(Box::new(Shape::Rectangle {
+            height: x1,
+            lower_left: (y0, z0),
+            upper_right: (y1, z1),
+            axes: Axes::YZ,
+        }));
 
-                for i in 0..2 {
-                    for j in 0..2 {
-                        for k in 0..2 {
-                            let x = i as f64 * bb.max[0] + (1.0 - i as f64) * bb.min[0];
-                            let y = j as f64 * bb.max[1] + (1.0 - j as f64) * bb.min[1];
-                            let z = k as f64 * bb.max[2] + (1.0 - k as f64) * bb.min[2];
+        sides.push(Box::new(
+            Shape::Rectangle {
+                height: y0,
+                lower_left: (x0, z0),
+                upper_right: (x1, z1),
+                axes: Axes::XZ,
+            }
+            .flip(),
+        ));
 
-                            let tester = Vec3([x, y, z]).rotate(*axis, *angle);
+        sides.push(Box::new(Shape::Rectangle {
+            height: y1,
+            lower_left: (x0, z0),
+            upper_right: (x1, z1),
+            axes: Axes::XZ,
+        }));
 
-                            for c in 0..3 {
-                                min[c] = min[c].min(tester[c]);
-                                max[c] = max[c].max(tester[c]);
-                            }
+        sides.push(Box::new(
+            Shape::Rectangle {
+                height: z0,
+                lower_left: (x0, y0),
+                upper_right: (x1, y1),
+                axes: Axes::XY,
+            }
+            .flip(),
+        ));
+
+        sides.push(Box::new(Shape::Rectangle {
+            height: z1,
+            lower_left: (x0, y0),
+            upper_right: (x1, y1),
+            axes: Axes::XY,
+        }));
+
+        Self { min, max, sides }
+    }
+}
+
+impl Geometry for MyBox {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
+        self.sides.intersect(ray, tmin, tmax, time)
+    }
+
+    fn bound(&self) -> Option<BoundingBox> {
+        Some(BoundingBox {
+            min: self.min,
+            max: self.max,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct ConstantMedium {
+    pub boundary: Box<dyn Geometry>,
+    pub density: f64,
+}
+
+impl Geometry for ConstantMedium {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
+        self.boundary
+            .intersect(ray, f64::NEG_INFINITY, f64::INFINITY, time)
+            .and_then(|mut ip1| {
+                self.boundary
+                    .intersect(ray, ip1.t + 0.001, f64::INFINITY, time)
+                    .and_then(|mut ip2| {
+                        let mut rng = rand::thread_rng();
+                        ip1.t = ip1.t.max(tmin);
+                        ip2.t = ip2.t.min(tmax);
+
+                        if ip1.t >= ip2.t {
+                            return None;
+                        }
+
+                        ip1.t = ip1.t.max(0.0);
+
+                        let length = ray.direction.norm();
+                        let distance_inside_boundary = (ip2.t - ip1.t) * length;
+                        let hit_distance = -1.0 / self.density * rng.gen::<f64>().ln();
+
+                        if hit_distance > distance_inside_boundary {
+                            return None;
+                        }
+
+                        let t = ip1.t + hit_distance / length;
+                        let point = ray.at(t);
+
+                        let normal = Vec3([1.0, 0.0, 0.0]).normed();
+
+                        Some(IntersectionPoint {
+                            point,
+                            normal,
+                            t,
+                            in_vec: ray.direction.normed(),
+                            surface_coordinates: (0.0, 0.0),
+                        })
+                    })
+            })
+    }
+
+    fn bound(&self) -> Option<BoundingBox> {
+        self.boundary.bound()
+    }
+}
+
+#[derive(Debug)]
+pub struct Flipped<T: std::fmt::Debug>(T);
+
+impl<T: Geometry> Geometry for Flipped<T> {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
+        self.0
+            .intersect(ray, tmin, tmax, time)
+            .map(|ip| IntersectionPoint {
+                normal: -ip.normal,
+                ..ip
+            })
+    }
+
+    fn bound(&self) -> Option<BoundingBox> {
+        self.0.bound()
+    }
+}
+
+#[derive(Debug)]
+pub struct Rotated<T: Debug> {
+    inner: T,
+    axis: Axis,
+    angle: f64,
+}
+
+impl<T: Geometry> Geometry for Rotated<T> {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
+        let Rotated { inner, axis, angle } = self;
+        let rotated_ray = Ray {
+            origin: ray.origin.rotate(*axis, -angle),
+            direction: ray.direction.rotate(*axis, -angle),
+        };
+
+        inner
+            .intersect(&rotated_ray, tmin, tmax, time)
+            .map(|ip| IntersectionPoint {
+                point: ip.point.rotate(*axis, *angle),
+                normal: ip.normal.rotate(*axis, *angle),
+                in_vec: ip.in_vec.rotate(*axis, *angle),
+                ..ip
+            })
+    }
+
+    fn bound(&self) -> Option<BoundingBox> {
+        self.inner.bound().map(|bb| {
+            let Rotated { axis, angle, .. } = self;
+            let mut min = Point3([f64::INFINITY, f64::INFINITY, f64::INFINITY]);
+            let mut max = Point3([f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY]);
+
+            for i in 0..2 {
+                for j in 0..2 {
+                    for k in 0..2 {
+                        let x = i as f64 * bb.max[0] + (1.0 - i as f64) * bb.min[0];
+                        let y = j as f64 * bb.max[1] + (1.0 - j as f64) * bb.min[1];
+                        let z = k as f64 * bb.max[2] + (1.0 - k as f64) * bb.min[2];
+
+                        let tester = Vec3([x, y, z]).rotate(*axis, *angle);
+
+                        for c in 0..3 {
+                            min[c] = min[c].min(tester[c]);
+                            max[c] = max[c].max(tester[c]);
                         }
                     }
                 }
+            }
 
-                BoundingBox { min, max }
-            }),
-
-            Self::ConstantMedium { boundary, .. } => boundary.bound(),
-        }
+            BoundingBox { min, max }
+        })
     }
 }
 
-impl Rotate for Shape {
-    fn rotate(self, axis: Axis, angle: f64) -> Self {
-        Self::Rotate {
-            inner: Box::new(self),
-            angle,
-            axis,
-        }
+#[derive(Debug)]
+pub struct Translated<T: Debug> {
+    inner: T,
+    offset: Vec3,
+}
+
+impl<T: Geometry> Geometry for Translated<T> {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
+        let Translated { inner, offset } = self;
+        let moved_ray = Ray {
+            origin: ray.origin - *offset,
+            ..*ray
+        };
+
+        inner
+            .intersect(&moved_ray, tmin, tmax, time)
+            .map(|ip| IntersectionPoint {
+                point: ip.point + *offset,
+                ..ip
+            })
+    }
+
+    fn bound(&self) -> Option<BoundingBox> {
+        let Translated { inner, offset } = self;
+        inner.bound().map(|BoundingBox { min, max }| BoundingBox {
+            min: min + *offset,
+            max: max + *offset,
+        })
     }
 }
 
-impl<T: Boundable> Boundable for Vec<T> {
+impl Geometry for Vec<Box<dyn Geometry>> {
+    fn intersect(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        mut tmax: f64,
+        time: f64,
+    ) -> Option<IntersectionPoint> {
+        let mut intersection_point = None;
+        for i in self.iter() {
+            if let Some(ip) = i.intersect(ray, tmin, tmax, time) {
+                tmax = ip.t;
+                intersection_point = Some(ip);
+            }
+        }
+
+        intersection_point
+    }
+
     fn bound(&self) -> Option<BoundingBox> {
         if self.is_empty() {
             return None;
@@ -525,8 +545,18 @@ impl<T: Boundable> Boundable for Vec<T> {
                 (_, None) => return None,
             }
         }
-
         result
+    }
+}
+
+impl<T: Geometry> Rotate for T {
+    type Output = Rotated<T>;
+    fn rotate(self, axis: Axis, angle: f64) -> Self::Output {
+        Rotated {
+            inner: self,
+            angle,
+            axis,
+        }
     }
 }
 
@@ -589,9 +619,15 @@ impl Point3 {
     pub fn dist(&self, other: &Point3) -> f64 {
         (*self - *other).norm()
     }
+
+    pub fn random<R: Rng + ?Sized>(range: Range<f64>, rng: &mut R) -> Self {
+        let range = Uniform::from(range);
+        Point3([range.sample(rng), range.sample(rng), range.sample(rng)])
+    }
 }
 
 impl Rotate for Point3 {
+    type Output = Self;
     fn rotate(self, axis: Axis, angle: f64) -> Self {
         let mut out = self;
         let angle = angle.to_radians();
@@ -671,6 +707,7 @@ impl Vec3 {
 }
 
 impl Rotate for Vec3 {
+    type Output = Self;
     fn rotate(self, axis: Axis, angle: f64) -> Self {
         let mut out = self;
         let angle = angle.to_radians();
@@ -807,6 +844,14 @@ impl Mul<Vec3> for Vec3 {
     type Output = Self;
     fn mul(self, other: Self) -> Self::Output {
         Self([self[0] * other[0], self[1] * other[1], self[2] * other[2]])
+    }
+}
+
+impl MulAssign<Vec3> for Vec3 {
+    fn mul_assign(&mut self, other: Self) {
+        self[0] *= other[0];
+        self[1] *= other[1];
+        self[2] *= other[2];
     }
 }
 
@@ -959,41 +1004,6 @@ impl Distribution<Vec3> for UnitDisc {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Interval {
-    Empty,
-    Nonempty(f64, f64),
-}
-
-impl Interval {
-    pub fn new(start: f64, end: f64) -> Self {
-        if start > end {
-            Interval::Empty
-        } else {
-            Interval::Nonempty(start, end)
-        }
-    }
-}
-
-fn intersect_interval(ray: &Ray, interval: &Interval, coord: usize) -> Interval {
-    assert!(coord < 3);
-    match interval {
-        Interval::Empty => Interval::Empty,
-        Interval::Nonempty(start, end) => {
-            let origin = ray.origin[coord];
-            let direction = ray.direction[coord];
-
-            if direction == 0.0 {
-                return Interval::Empty;
-            }
-
-            let (t0, t1) = ((start - origin) / direction, (end - origin) / direction);
-
-            Interval::new(t0.min(t1), t0.max(t1))
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct BoundingBox {
     pub min: Point3,
@@ -1090,8 +1100,8 @@ mod test {
 
     #[test]
     fn rotated_box() {
-        let my_box = Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([10.0, 10.0, 10.0]))
-            .rotate(Axis::Y, 45.0);
+        let my_box =
+            MyBox::new(Point3([0.0, 0.0, 0.0]), Point3([10.0, 10.0, 10.0])).rotate(Axis::Y, 45.0);
         let ray = Ray {
             origin: Point3([-10.0, 5.0, 12.0]),
             direction: Vec3([1.0, 0.0, -1.0]),

@@ -3,20 +3,52 @@ pub mod materials;
 pub mod textures;
 
 use camera::Camera;
-use geometry::{Boundable, BoundingBox, Intersection, Ray, Shape, Vec3};
+use geometry::{BoundingBox, Geometry, IntersectionPoint, Ray, Vec3};
+use indicatif::ProgressBar;
 use materials::Material;
+use rand::rngs::ThreadRng;
 use rand::Rng;
 use rayon::prelude::*;
 use std::cmp::Ordering;
+use std::sync::{Arc, Mutex};
 
-pub fn pixels(camera: &Camera, world: &World, image_options: ImageOptions) -> Vec<u8> {
+pub trait Optics: Geometry {
+    fn scatter(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        tmax: f64,
+        time: f64,
+        rng: &mut ThreadRng,
+    ) -> Option<RayHit> {
+        self.scatter_(ray, tmin, tmax, time, rng).map(|(_, rh)| rh)
+    }
+
+    fn scatter_(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        tmax: f64,
+        time: f64,
+        rng: &mut ThreadRng,
+    ) -> Option<(f64, RayHit)>;
+}
+
+pub fn pixels(
+    camera: &Camera,
+    world: &World,
+    image_options: ImageOptions,
+    progress_bar: Arc<Mutex<ProgressBar>>,
+) -> Vec<u8> {
     (0..image_options.height)
         .into_par_iter()
         .rev()
         .flat_map(move |j| {
-            (0..image_options.width)
-                .into_par_iter()
-                .map(move |i| pixel(&camera, &world, (i, j), image_options))
+            let progress_bar = Arc::clone(&progress_bar);
+            (0..image_options.width).into_par_iter().map(move |i| {
+                let progress_bar = Arc::clone(&progress_bar);
+                pixel(&camera, &world, (i, j), image_options, progress_bar)
+            })
         })
         .collect::<Vec<[u8; 3]>>()
         .concat()
@@ -30,8 +62,9 @@ fn pixel<'a>(
         width,
         height,
         samples_per_pixel,
-        max_depth,
+        max_reflections,
     }: ImageOptions,
+    progress_bar: Arc<Mutex<ProgressBar>>,
 ) -> [u8; 3] {
     let v: Vec3 = (0..samples_per_pixel)
         .into_par_iter()
@@ -44,12 +77,15 @@ fn pixel<'a>(
                 world,
                 camera.random_time(&mut rng),
                 &mut rng,
-                max_depth,
+                max_reflections,
             )
         })
         .sum::<Vec3>()
         / samples_per_pixel as f64;
 
+    let progress_bar = progress_bar.lock().unwrap();
+
+    progress_bar.inc(1);
     [
         (v[0].max(0.0).min(1.0) * 255.999) as u8,
         (v[1].max(0.0).min(1.0) * 255.999) as u8,
@@ -57,21 +93,31 @@ fn pixel<'a>(
     ]
 }
 
-fn ray_color<R>(ray: &Ray, world: &World, time: f64, rng: &mut R, depth: usize) -> Vec3
-where
-    R: Rng + ?Sized,
-{
-    if depth == 0 {
-        return Vec3([0.0, 0.0, 0.0]);
-    }
-    match world.objects.scatter(ray, 0.001, f64::INFINITY, time, rng) {
-        None => world.background_color,
+fn ray_color(
+    ray: &Ray,
+    world: &World,
+    time: f64,
+    rng: &mut ThreadRng,
+    max_reflections: usize,
+) -> Vec3 {
+    let mut ray = *ray;
+    let mut result = Vec3([1.0, 1.0, 1.0]);
 
-        Some(RayHit::Emitted(color)) => color,
-        Some(RayHit::Scattered { attenuation, ray }) => {
-            attenuation * ray_color(&ray, world, time, rng, depth - 1)
+    for _ in 0..max_reflections {
+        match world.objects.scatter(&ray, 0.001, f64::INFINITY, time, rng) {
+            None => return result * world.background_color,
+            Some(RayHit::Emitted(color)) => return result * color,
+            Some(RayHit::Scattered {
+                attenuation,
+                ray: new_ray,
+            }) => {
+                result *= attenuation;
+                ray = new_ray;
+            }
         }
     }
+
+    Vec3([0.0, 0.0, 0.0])
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -79,45 +125,40 @@ pub struct ImageOptions {
     pub height: u32,
     pub width: u32,
     pub samples_per_pixel: usize,
-    pub max_depth: usize,
+    pub max_reflections: usize,
 }
 
-#[derive(Clone, Debug)]
 pub struct World {
-    objects: BvhNode<Object>,
-    background_color: Vec3,
+    pub objects: Box<dyn Optics>,
+    pub background_color: Vec3,
 }
 
-impl World {
-    pub fn new<R: Rng + ?Sized>(objects: Vec<Object>, background_color: Vec3, rng: &mut R) -> Self {
-        Self {
-            objects: BvhNode::create(objects, rng),
-            background_color,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum BvhNode<T: Boundable> {
+#[derive(Debug)]
+pub enum BvhNode {
     Leaf {
         bounding_box: Option<BoundingBox>,
-        object: T,
+        object: Box<dyn Optics>,
     },
 
     Branch {
         bounding_box: Option<BoundingBox>,
-        left: Box<BvhNode<T>>,
-        right: Box<BvhNode<T>>,
+        left: Box<BvhNode>,
+        right: Box<BvhNode>,
     },
 }
 
-impl<T: Boundable + Clone> BvhNode<T> {
-    fn create<R: Rng + ?Sized>(mut objects: Vec<T>, rng: &mut R) -> Self {
+impl BvhNode {
+    pub fn create<R: Rng + ?Sized>(objects: Vec<Box<dyn Optics>>, rng: &mut R) -> Self {
+        let mut objects: Vec<Option<Box<dyn Optics>>> = objects.into_iter().map(Some).collect();
+        Self::create_(&mut objects, rng)
+    }
+
+    fn create_<R: Rng + ?Sized>(objects: &mut [Option<Box<dyn Optics>>], rng: &mut R) -> Self {
         assert!(!objects.is_empty());
         let n = objects.len();
 
         if n == 1 {
-            let object = objects.remove(0);
+            let object = objects[0].take().unwrap();
             let bounding_box = object.bound();
             Self::Leaf {
                 object,
@@ -126,17 +167,19 @@ impl<T: Boundable + Clone> BvhNode<T> {
         } else {
             let axis: usize = rng.gen_range(0, 3);
 
-            objects.sort_by(|o1, o2| match (o1.bound(), o2.bound()) {
-                (Some(bb1), Some(bb2)) => bb1.min[axis]
-                    .partial_cmp(&bb2.min[axis])
-                    .unwrap_or(Ordering::Equal),
-                (None, Some(_)) => Ordering::Less,
-                (Some(_), None) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
+            objects.sort_by(|o1, o2| {
+                match (o1.as_ref().unwrap().bound(), o2.as_ref().unwrap().bound()) {
+                    (Some(bb1), Some(bb2)) => bb1.min[axis]
+                        .partial_cmp(&bb2.min[axis])
+                        .unwrap_or(Ordering::Equal),
+                    (None, Some(_)) => Ordering::Less,
+                    (Some(_), None) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
             });
             let (objects_left, objects_right) = objects.split_at_mut(n / 2);
-            let left = Self::create(Vec::from(objects_left), rng);
-            let right = Self::create(Vec::from(objects_right), rng);
+            let left = Self::create_(objects_left, rng);
+            let right = Self::create_(objects_right, rng);
             let bounding_box =
                 if let (Some(lb), Some(rb)) = (left.bounding_box(), right.bounding_box()) {
                     Some(lb + rb)
@@ -160,25 +203,14 @@ impl<T: Boundable + Clone> BvhNode<T> {
     }
 }
 
-impl BvhNode<Object> {
-    fn scatter<R: Rng + ?Sized>(
-        &self,
-        ray: &Ray,
-        tmin: f64,
-        tmax: f64,
-        time: f64,
-        rng: &mut R,
-    ) -> Option<RayHit> {
-        self.scatter_(ray, tmin, tmax, time, rng).map(|x| x.1)
-    }
-
-    fn scatter_<R: Rng + ?Sized>(
+impl Optics for BvhNode {
+    fn scatter_(
         &self,
         ray: &Ray,
         tmin: f64,
         mut tmax: f64,
         time: f64,
-        rng: &mut R,
+        rng: &mut ThreadRng,
     ) -> Option<(f64, RayHit)> {
         if let Some(bb) = self.bounding_box() {
             if !bb.hit(ray, tmin, tmax) {
@@ -186,7 +218,7 @@ impl BvhNode<Object> {
             }
         }
         match self {
-            Self::Leaf { object, .. } => (*object).scatter(ray, tmin, tmax, time, rng),
+            Self::Leaf { object, .. } => (*object).scatter_(ray, tmin, tmax, time, rng),
             Self::Branch { left, right, .. } => {
                 let mut scattered = None;
                 if let Some((t, new_scattered)) = (*left).scatter_(ray, tmin, tmax, time, rng) {
@@ -203,20 +235,58 @@ impl BvhNode<Object> {
     }
 }
 
-#[derive(Clone, Debug)]
+impl Geometry for BvhNode {
+    fn intersect(
+        &self,
+        ray: &Ray,
+        tmin: f64,
+        mut tmax: f64,
+        time: f64,
+    ) -> Option<IntersectionPoint> {
+        if let Some(bb) = self.bounding_box() {
+            if !bb.hit(ray, tmin, tmax) {
+                return None;
+            }
+        }
+
+        match self {
+            Self::Leaf { object, .. } => object.intersect(ray, tmin, tmax, time),
+            Self::Branch { left, right, .. } => {
+                let mut ip = None;
+
+                if let Some(res) = (*left).intersect(ray, tmin, tmax, time) {
+                    ip = Some(res);
+                    tmax = res.t;
+                }
+
+                if let Some(res) = (*right).intersect(ray, tmin, tmax, time) {
+                    ip = Some(res);
+                }
+
+                ip
+            }
+        }
+    }
+
+    fn bound(&self) -> Option<BoundingBox> {
+        self.bounding_box()
+    }
+}
+
+#[derive(Debug)]
 pub struct Object {
-    pub shape: Shape,
+    pub shape: Box<dyn Geometry + Sync + Send>,
     pub material: Material,
 }
 
-impl Object {
-    pub fn scatter<R: Rng + ?Sized>(
+impl Optics for Object {
+    fn scatter_(
         &self,
         r: &Ray,
         tmin: f64,
         tmax: f64,
         time: f64,
-        rng: &mut R,
+        rng: &mut ThreadRng,
     ) -> Option<(f64, RayHit)> {
         self.shape
             .intersect(r, tmin, tmax, time)
@@ -225,7 +295,10 @@ impl Object {
     }
 }
 
-impl Boundable for Object {
+impl Geometry for Object {
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
+        self.shape.intersect(ray, tmin, tmax, time)
+    }
     fn bound(&self) -> Option<BoundingBox> {
         self.shape.bound()
     }

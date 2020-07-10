@@ -1,16 +1,21 @@
 use image::{ImageBuffer, RgbImage};
+use indicatif::{ProgressBar, ProgressStyle};
 use raytracing::camera::{Camera, CameraOptions};
-use raytracing::geometry::{Axes, Axis, Point3, Rotate, Shape, Vec3};
+use raytracing::geometry::{Axis, ConstantMedium, Geometry, MyBox, Point3, Rotate, Shape, Vec3};
 use raytracing::materials::Material;
 use raytracing::textures::Texture;
-use raytracing::{pixels, ImageOptions, Object, World};
+use raytracing::{pixels, BvhNode, ImageOptions, Object, Optics, World};
+use std::sync::{Arc, Mutex};
 
 fn main() {
     const ASPECT_RATIO: f64 = 1.0;
     const IMAGE_WIDTH: u32 = 750;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
-    const MAX_DEPTH: usize = 50;
+    const MAX_REFLECTIONS: usize = 50;
+    let progress_bar = ProgressBar::new((IMAGE_WIDTH * IMAGE_HEIGHT).into());
+    progress_bar.set_style(ProgressStyle::default_bar().template("{wide_bar} {percent:2}%"));
+    let progress_bar = Arc::new(Mutex::new(progress_bar));
 
     let mut rng = rand::thread_rng();
 
@@ -18,7 +23,7 @@ fn main() {
         width: IMAGE_WIDTH,
         height: IMAGE_HEIGHT,
         samples_per_pixel: SAMPLES_PER_PIXEL,
-        max_depth: MAX_DEPTH,
+        max_reflections: MAX_REFLECTIONS,
     };
 
     let camera = Camera::new(CameraOptions {
@@ -33,89 +38,112 @@ fn main() {
         vup: Vec3([0.0, 1.0, 0.0]),
     });
 
-    let mut objects = Vec::new();
+    let mut objects: Vec<Box<dyn Optics>> = Vec::new();
 
     // left wall
-    objects.push(Object {
-        shape: Shape::rectangle(Point3([0.0, 0.0, 0.0]), Point3([0.0, 555.0, 555.0])),
+    objects.push(Box::new(Object {
+        shape: Box::new(Shape::rectangle(
+            Point3([0.0, 0.0, 0.0]),
+            Point3([0.0, 555.0, 555.0]),
+        )),
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.65, 0.05, 0.05])),
         },
-    });
+    }));
 
     // right wall
-    objects.push(Object {
-        shape: Shape::rectangle(Point3([555.0, 0.0, 0.0]), Point3([555.0, 555.0, 555.0])).flipped(),
+    objects.push(Box::new(Object {
+        shape: Box::new(
+            Shape::rectangle(Point3([555.0, 0.0, 0.0]), Point3([555.0, 555.0, 555.0])).flip(),
+        ),
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.12, 0.45, 0.15])),
         },
-    });
+    }));
 
     // floor
-    objects.push(Object {
-        shape: Shape::rectangle(Point3([0.0, 0.0, 0.0]), Point3([555.0, 0.0, 555.0])),
+    objects.push(Box::new(Object {
+        shape: Box::new(Shape::rectangle(
+            Point3([0.0, 0.0, 0.0]),
+            Point3([555.0, 0.0, 555.0]),
+        )),
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
-    });
+    }));
 
     // ceiling
-    objects.push(Object {
-        shape: Shape::rectangle(Point3([0.0, 555.0, 0.0]), Point3([555.0, 555.0, 555.0])).flipped(),
+    objects.push(Box::new(Object {
+        shape: Box::new(
+            Shape::rectangle(Point3([0.0, 555.0, 0.0]), Point3([555.0, 555.0, 555.0])).flip(),
+        ),
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
-    });
+    }));
 
     // back wall
-    objects.push(Object {
-        shape: Shape::rectangle(Point3([0.0, 0.0, 555.0]), Point3([555.0, 555.0, 555.0])).flipped(),
+    objects.push(Box::new(Object {
+        shape: Box::new(
+            Shape::rectangle(Point3([0.0, 0.0, 555.0]), Point3([555.0, 555.0, 555.0])).flip(),
+        ),
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
         },
-    });
+    }));
 
     // first box
-    objects.push(Object {
-        shape: Shape::ConstantMedium {
-            boundary: Box::new(Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 330.0, 165.0]))
-            .rotate(Axis::Y, 15.0)
-            .translate(Vec3([265.0, 0.0, 295.0]))),
+    objects.push(Box::new(Object {
+        shape: Box::new(ConstantMedium {
+            boundary: Box::new(
+                MyBox::new(Point3([0.0, 0.0, 0.0]), Point3([165.0, 330.0, 165.0]))
+                    .rotate(Axis::Y, 15.0)
+                    .translate(Vec3([265.0, 0.0, 295.0])),
+            ),
             density: 0.01,
-        },
-        
+        }),
+
         material: Material::Isotropic {
             texture: Texture::SolidColor(Vec3([0.0, 0.0, 0.0])),
         },
-    });
+    }));
 
     // second box
-    objects.push(Object {
-        shape: Shape::ConstantMedium {
-            boundary: Box::new(Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 165.0, 165.0]))
-            .rotate(Axis::Y, -18.0)
-            .translate(Vec3([130.0, 0.0, 65.0]))),
+    objects.push(Box::new(Object {
+        shape: Box::new(ConstantMedium {
+            boundary: Box::new(
+                MyBox::new(Point3([0.0, 0.0, 0.0]), Point3([165.0, 165.0, 165.0]))
+                    .rotate(Axis::Y, -18.0)
+                    .translate(Vec3([130.0, 0.0, 65.0])),
+            ),
             density: 0.01,
-        },
+        }),
 
         material: Material::Isotropic {
             texture: Texture::SolidColor(Vec3([1.0, 1.0, 1.0])),
         },
-    });
+    }));
 
     // light
-    objects.push(Object {
-        shape: Shape::rectangle(Point3([113.0, 554.0, 127.0]), Point3([443.0, 554.0, 432.0])),
+    objects.push(Box::new(Object {
+        shape: Box::new(Shape::rectangle(
+            Point3([213.0, 554.0, 227.0]),
+            Point3([343.0, 554.0, 332.0]),
+        )),
         material: Material::DiffuseLight {
-            emit: Texture::SolidColor(Vec3([7.0, 7.0, 7.0])),
+            emit: Texture::SolidColor(Vec3([15.0, 15.0, 15.0])),
         },
-    });
+    }));
 
-    let world = World::new(objects, Vec3([0.0, 0.0, 0.0]), &mut rng);
+    let world = World {
+        objects: Box::new(BvhNode::create(objects, &mut rng)),
+        background_color: Vec3([0.0, 0.0, 0.0]),
+    };
+
     let image: RgbImage = ImageBuffer::from_raw(
         IMAGE_WIDTH,
         IMAGE_HEIGHT,
-        pixels(&camera, &world, image_options),
+        pixels(&camera, &world, image_options, Arc::clone(&progress_bar)),
     )
     .unwrap();
 
