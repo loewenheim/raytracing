@@ -9,7 +9,7 @@ use std::ops::{
 
 pub use shape::{Boundable, BoundingBox, Face, Intersection, IntersectionPoint, Shape};
 
-pub trait Rotate {
+trait Rotate {
     fn rotate(self, axis: Axis, angle: f64) -> Self;
 }
 

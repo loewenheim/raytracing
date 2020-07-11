@@ -1,6 +1,6 @@
 use image::{ImageBuffer, RgbImage};
 use raytracing::camera::{Camera, CameraOptions};
-use raytracing::geometry::{Axis, Point3, Rotate, Shape, Vec3};
+use raytracing::geometry::{Axis, Point3, Shape, Vec3};
 use raytracing::materials::Material;
 use raytracing::textures::Texture;
 use raytracing::{pixels, ImageOptions, Object, World};
