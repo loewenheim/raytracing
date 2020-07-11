@@ -341,10 +341,7 @@ impl Intersection for Shape {
                     })
             }
 
-            Self::ConstantMedium {
-                boundary,
-                density,
-            } => boundary
+            Self::ConstantMedium { boundary, density } => boundary
                 .intersect(ray, f64::NEG_INFINITY, f64::INFINITY, time)
                 .and_then(|mut ip1| {
                     boundary
@@ -362,7 +359,7 @@ impl Intersection for Shape {
 
                             let length = ray.direction.norm();
                             let distance_inside_boundary = (ip2.t - ip1.t) * length;
-                            let hit_distance = -1.0/density * rng.gen::<f64>().ln();
+                            let hit_distance = -1.0 / density * rng.gen::<f64>().ln();
 
                             if hit_distance > distance_inside_boundary {
                                 return None;
@@ -807,6 +804,14 @@ impl Mul<Vec3> for Vec3 {
     type Output = Self;
     fn mul(self, other: Self) -> Self::Output {
         Self([self[0] * other[0], self[1] * other[1], self[2] * other[2]])
+    }
+}
+
+impl MulAssign<Vec3> for Vec3 {
+    fn mul_assign(&mut self, other: Self) {
+        self[0] *= other[0];
+        self[1] *= other[1];
+        self[2] *= other[2];
     }
 }
 
