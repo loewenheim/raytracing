@@ -1,7 +1,7 @@
 use image::{ImageBuffer, RgbImage};
 use noise::Perlin;
 use raytracing::camera::{Camera, CameraOptions};
-use raytracing::geometry::{Axes, Point3, Shape, Vec3};
+use raytracing::geometry::{Point3, Shape, Vec3};
 use raytracing::materials::Material;
 use raytracing::textures::Texture;
 use raytracing::{pixels, ImageOptions, Object, World};
@@ -78,13 +78,7 @@ fn main() {
     });
 
     objects.push(Object {
-        shape: Shape::Rectangle {
-            lower_left: (3.0, 1.0),
-            upper_right: (5.0, 3.0),
-            height: -2.0,
-            axes: Axes::XY,
-        },
-
+        shape: Shape::rectangle(Point3([3.0, 1.0, -2.0]), Point3([5.0, 3.0, -2.0])),
         material: diff_light,
     });
 

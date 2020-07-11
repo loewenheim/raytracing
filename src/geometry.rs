@@ -20,23 +20,6 @@ pub enum Axis {
     Z,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Axes {
-    XY,
-    XZ,
-    YZ,
-}
-
-impl Axes {
-    fn coords(&self) -> (usize, usize, usize) {
-        match self {
-            Axes::XY => (0, 1, 2),
-            Axes::XZ => (0, 2, 1),
-            Axes::YZ => (1, 2, 0),
-        }
-    }
-}
-
 /// A point in three-dimensional space.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point3(pub [f64; 3]);

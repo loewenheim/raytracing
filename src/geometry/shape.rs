@@ -1,4 +1,4 @@
-use super::{Axes, Axis, Point3, Ray, Rotate, UnitVec3, Vec3};
+use super::{Axis, Point3, Ray, Rotate, UnitVec3, Vec3};
 use rand::Rng;
 use std::f64::consts::PI;
 use std::ops::Add;
@@ -70,7 +70,7 @@ pub enum Shape {
     },
 
     Rectangle {
-        axes: Axes,
+        axis: Axis,
         lower_left: (f64, f64),
         upper_right: (f64, f64),
         height: f64,
@@ -118,15 +118,19 @@ impl Shape {
     }
 
     pub fn rectangle(lower_left: Point3, upper_right: Point3) -> Self {
-        let axes = if lower_left[0] == upper_right[0] {
-            Axes::YZ
+        let axis = if lower_left[0] == upper_right[0] {
+            Axis::X
         } else if lower_left[1] == upper_right[1] {
-            Axes::XZ
+            Axis::Y
         } else {
-            Axes::XY
+            Axis::Z
         };
 
-        let (p1, p2, o) = axes.coords();
+        let (p1, p2, o) = match axis {
+            Axis::X => (1, 2, 0),
+            Axis::Y => (2, 0, 1),
+            Axis::Z => (0, 1, 2),
+        };
 
         let height = lower_left[o];
         let lower_left = (lower_left[p1], lower_left[p2]);
@@ -135,7 +139,7 @@ impl Shape {
         Self::Rectangle {
             lower_left,
             upper_right,
-            axes,
+            axis,
             height,
         }
     }
@@ -151,7 +155,7 @@ impl Shape {
                 height: x0,
                 lower_left: (y0, z0),
                 upper_right: (y1, z1),
-                axes: Axes::YZ,
+                axis: Axis::X,
             }
             .flipped(),
         );
@@ -160,7 +164,7 @@ impl Shape {
             height: x1,
             lower_left: (y0, z0),
             upper_right: (y1, z1),
-            axes: Axes::YZ,
+            axis: Axis::X,
         });
 
         sides.push(
@@ -168,7 +172,7 @@ impl Shape {
                 height: y0,
                 lower_left: (x0, z0),
                 upper_right: (x1, z1),
-                axes: Axes::XZ,
+                axis: Axis::Y,
             }
             .flipped(),
         );
@@ -177,7 +181,7 @@ impl Shape {
             height: y1,
             lower_left: (x0, z0),
             upper_right: (x1, z1),
-            axes: Axes::XZ,
+            axis: Axis::Y,
         });
 
         sides.push(
@@ -185,7 +189,7 @@ impl Shape {
                 height: z0,
                 lower_left: (x0, y0),
                 upper_right: (x1, y1),
-                axes: Axes::XY,
+                axis: Axis::Z,
             }
             .flipped(),
         );
@@ -194,7 +198,7 @@ impl Shape {
             height: z1,
             lower_left: (x0, y0),
             upper_right: (x1, y1),
-            axes: Axes::XY,
+            axis: Axis::Z,
         });
 
         Self::Box { min, max, sides }
@@ -308,9 +312,13 @@ impl Intersection for Shape {
                 lower_left: (x0, y0),
                 upper_right: (x1, y1),
                 height,
-                axes,
+                axis,
             } => {
-                let (p1, p2, o) = axes.coords();
+                let (p1, p2, o) = match axis {
+                    Axis::X => (1, 2, 0),
+                    Axis::Y => (2, 0, 1),
+                    Axis::Z => (0, 1, 2),
+                };
 
                 let t = (height - ray.origin[o]) / ray.direction[o];
                 if t < tmin || t > tmax {
@@ -453,9 +461,13 @@ impl Boundable for Shape {
                 lower_left: (x0, y0),
                 upper_right: (x1, y1),
                 height,
-                axes,
+                axis,
             } => {
-                let (p1, p2, o) = axes.coords();
+                let (p1, p2, o) = match axis {
+                    Axis::X => (1, 2, 0),
+                    Axis::Y => (2, 0, 1),
+                    Axis::Z => (0, 1, 2),
+                };
 
                 let mut min = Point3::default();
                 let mut max = Point3::default();
