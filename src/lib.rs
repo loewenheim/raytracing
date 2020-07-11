@@ -309,7 +309,7 @@ pub mod camera {
         }
 
         pub fn ray<R: Rng + ?Sized>(&self, s: f64, t: f64, rng: &mut R) -> Ray {
-            let rd = UnitDisc.sample(rng) * self.lens_radius;
+            let rd = InsideUnitDisc.sample(rng) * self.lens_radius;
             let offset = *self.onb[0] * rd[0] + *self.onb[1] * rd[1];
             let origin = self.origin + offset;
             let direction =
