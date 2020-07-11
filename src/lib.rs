@@ -4,15 +4,19 @@ pub mod textures;
 
 use camera::Camera;
 use geometry::{Boundable, BoundingBox, Intersection, Ray, Shape, Vec3};
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use materials::Material;
 use rand::Rng;
 use rayon::prelude::*;
 use std::cmp::Ordering;
 
 pub fn pixels(camera: &Camera, world: &World, image_options: ImageOptions) -> Vec<u8> {
+    let bar = ProgressBar::new(image_options.height as _);
+    bar.set_style(ProgressStyle::default_bar().template("Lines: {wide_bar} {percent:2} %"));
     (0..image_options.height)
         .into_par_iter()
         .rev()
+        .progress_with(bar)
         .flat_map(move |j| {
             (0..image_options.width)
                 .into_par_iter()
