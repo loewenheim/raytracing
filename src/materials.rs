@@ -2,6 +2,7 @@ use super::geometry::{random_unit_vector, Face, IntersectionPoint, Ray, UnitVec3
 use crate::textures::Texture;
 use crate::RayHit;
 use rand::Rng;
+use std::f64::consts::PI;
 
 #[derive(Clone, Debug)]
 pub enum Material {
@@ -38,7 +39,9 @@ impl Material {
                         p.surface_coordinates.0,
                         p.surface_coordinates.1,
                         &p.point,
-                    ),
+                    ) * self.scattering_pdf(&scattered.direction.normed(), p)
+                        * PI
+                        / p.normal.dot(*scattered.direction.normed()),
                     ray: scattered,
                 }
             }
@@ -107,6 +110,21 @@ impl Material {
                     &p.point,
                 ),
             },
+        }
+    }
+
+    fn scattering_pdf(
+        &self,
+        scattered_direction: &UnitVec3,
+        intersection_point: &IntersectionPoint,
+    ) -> f64 {
+        match self {
+            Material::Lambertian { .. } => {
+                let cosine = intersection_point.normal.dot(**scattered_direction);
+                (cosine / PI).max(0.0)
+            }
+
+            _ => todo!(),
         }
     }
 }
