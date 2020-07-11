@@ -78,12 +78,14 @@ fn main() {
     // first box
     objects.push(Object {
         shape: Shape::ConstantMedium {
-            boundary: Box::new(Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 330.0, 165.0]))
-            .rotate(Axis::Y, 15.0)
-            .translate(Vec3([265.0, 0.0, 295.0]))),
+            boundary: Box::new(
+                Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 330.0, 165.0]))
+                    .rotate(Axis::Y, 15.0)
+                    .translate(Vec3([265.0, 0.0, 295.0])),
+            ),
             density: 0.01,
         },
-        
+
         material: Material::Isotropic {
             texture: Texture::SolidColor(Vec3([0.0, 0.0, 0.0])),
         },
@@ -92,9 +94,11 @@ fn main() {
     // second box
     objects.push(Object {
         shape: Shape::ConstantMedium {
-            boundary: Box::new(Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 165.0, 165.0]))
-            .rotate(Axis::Y, -18.0)
-            .translate(Vec3([130.0, 0.0, 65.0]))),
+            boundary: Box::new(
+                Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 165.0, 165.0]))
+                    .rotate(Axis::Y, -18.0)
+                    .translate(Vec3([130.0, 0.0, 65.0])),
+            ),
             density: 0.01,
         },
 

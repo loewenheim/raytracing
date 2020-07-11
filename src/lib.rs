@@ -57,21 +57,28 @@ fn pixel<'a>(
     ]
 }
 
-fn ray_color<R>(ray: &Ray, world: &World, time: f64, rng: &mut R, depth: usize) -> Vec3
+fn ray_color<R>(ray: &Ray, world: &World, time: f64, rng: &mut R, max_reflections: usize) -> Vec3
 where
     R: Rng + ?Sized,
 {
-    if depth == 0 {
-        return Vec3([0.0, 0.0, 0.0]);
-    }
-    match world.objects.scatter(ray, 0.001, f64::INFINITY, time, rng) {
-        None => world.background_color,
+    let mut ray = *ray;
+    let mut result = Vec3([1.0, 1.0, 1.0]);
 
-        Some(RayHit::Emitted(color)) => color,
-        Some(RayHit::Scattered { attenuation, ray }) => {
-            attenuation * ray_color(&ray, world, time, rng, depth - 1)
+    for _ in 0..max_reflections {
+        match world.objects.scatter(&ray, 0.001, f64::INFINITY, time, rng) {
+            None => return result * world.background_color,
+            Some(RayHit::Emitted(color)) => return result * color,
+            Some(RayHit::Scattered {
+                attenuation,
+                ray: new_ray,
+            }) => {
+                result *= attenuation;
+                ray = new_ray;
+            }
         }
     }
+
+    Vec3([0.0, 0.0, 0.0])
 }
 
 #[derive(Debug, Clone, Copy)]
