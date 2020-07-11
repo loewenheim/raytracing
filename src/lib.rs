@@ -30,7 +30,7 @@ fn pixel<'a>(
         width,
         height,
         samples_per_pixel,
-        max_depth,
+        max_reflections,
     }: ImageOptions,
 ) -> [u8; 3] {
     let v: Vec3 = (0..samples_per_pixel)
@@ -44,7 +44,7 @@ fn pixel<'a>(
                 world,
                 camera.random_time(&mut rng),
                 &mut rng,
-                max_depth,
+                max_reflections,
             )
         })
         .sum::<Vec3>()
@@ -86,7 +86,7 @@ pub struct ImageOptions {
     pub height: u32,
     pub width: u32,
     pub samples_per_pixel: usize,
-    pub max_depth: usize,
+    pub max_reflections: usize,
 }
 
 #[derive(Clone, Debug)]

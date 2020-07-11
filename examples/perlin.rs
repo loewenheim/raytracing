@@ -12,7 +12,7 @@ fn main() {
     const IMAGE_WIDTH: u32 = 1280;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
-    const MAX_DEPTH: usize = 50;
+    const MAX_REFLECTIONS: usize = 50;
 
     let mut rng = rand::thread_rng();
 
@@ -20,7 +20,7 @@ fn main() {
         width: IMAGE_WIDTH,
         height: IMAGE_HEIGHT,
         samples_per_pixel: SAMPLES_PER_PIXEL,
-        max_depth: MAX_DEPTH,
+        max_reflections: MAX_REFLECTIONS,
     };
 
     let camera = Camera::new(CameraOptions {
