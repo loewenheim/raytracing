@@ -44,7 +44,10 @@ pub enum Shape {
         height: f64,
     },
 
-    Flipped(Box<Shape>),
+    ConstantMedium {
+        boundary: Box<Shape>,
+        density: f64,
+    },
 
     Box {
         min: Point3,
@@ -52,20 +55,17 @@ pub enum Shape {
         sides: Vec<Shape>,
     },
 
-    Translate {
+    Flipped(Box<Shape>),
+
+    Translated {
         inner: Box<Shape>,
         offset: Vec3,
     },
 
-    Rotate {
+    Rotated {
         axis: Axis,
         inner: Box<Shape>,
         angle: f64,
-    },
-
-    ConstantMedium {
-        boundary: Box<Shape>,
-        density: f64,
     },
 }
 
@@ -74,11 +74,15 @@ impl Shape {
         Self::Flipped(Box::new(self))
     }
 
-    pub fn translate(self, offset: Vec3) -> Self {
-        Self::Translate {
+    pub fn translated(self, offset: Vec3) -> Self {
+        Self::Translated {
             inner: Box::new(self),
             offset,
         }
+    }
+
+    pub fn rotated(self, axis: Axis, angle: f64) -> Self {
+        self.rotate(axis, angle)
     }
 
     pub fn rectangle(lower_left: Point3, upper_right: Point3) -> Self {
@@ -311,7 +315,7 @@ impl Intersection for Shape {
             }
 
             Self::Box { sides, .. } => sides.intersect(ray, tmin, tmax, time),
-            Self::Translate { inner, offset } => {
+            Self::Translated { inner, offset } => {
                 let moved_ray = Ray {
                     origin: ray.origin - *offset,
                     ..*ray
@@ -325,7 +329,7 @@ impl Intersection for Shape {
                     })
             }
 
-            Self::Rotate { axis, angle, inner } => {
+            Self::Rotated { axis, angle, inner } => {
                 let rotated_ray = Ray {
                     origin: ray.origin.rotate(*axis, -angle),
                     direction: ray.direction.rotate(*axis, -angle),
@@ -462,14 +466,14 @@ impl Boundable for Shape {
                 max: *max,
             }),
 
-            Self::Translate { inner, offset } => {
+            Self::Translated { inner, offset } => {
                 inner.bound().map(|BoundingBox { min, max }| BoundingBox {
                     min: min + *offset,
                     max: max + *offset,
                 })
             }
 
-            Self::Rotate { inner, axis, angle } => inner.bound().map(|bb| {
+            Self::Rotated { inner, axis, angle } => inner.bound().map(|bb| {
                 let mut min = Point3([f64::INFINITY, f64::INFINITY, f64::INFINITY]);
                 let mut max = Point3([f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY]);
 
@@ -500,7 +504,7 @@ impl Boundable for Shape {
 
 impl Rotate for Shape {
     fn rotate(self, axis: Axis, angle: f64) -> Self {
-        Self::Rotate {
+        Self::Rotated {
             inner: Box::new(self),
             angle,
             axis,

@@ -1,6 +1,6 @@
 use image::{ImageBuffer, RgbImage};
 use raytracing::camera::{Camera, CameraOptions};
-use raytracing::geometry::{Axis, Point3, Rotate, Shape, Vec3};
+use raytracing::geometry::{Axis, Point3, Shape, Vec3};
 use raytracing::materials::Material;
 use raytracing::textures::Texture;
 use raytracing::{pixels, ImageOptions, Object, World};
@@ -78,8 +78,8 @@ fn main() {
     // first box
     objects.push(Object {
         shape: Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 330.0, 165.0]))
-            .rotate(Axis::Y, 15.0)
-            .translate(Vec3([265.0, 0.0, 295.0])),
+            .rotated(Axis::Y, 15.0)
+            .translated(Vec3([265.0, 0.0, 295.0])),
 
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
@@ -89,8 +89,8 @@ fn main() {
     // second box
     objects.push(Object {
         shape: Shape::new_box(Point3([0.0, 0.0, 0.0]), Point3([165.0, 165.0, 165.0]))
-            .rotate(Axis::Y, -18.0)
-            .translate(Vec3([130.0, 0.0, 65.0])),
+            .rotated(Axis::Y, -18.0)
+            .translated(Vec3([130.0, 0.0, 65.0])),
 
         material: Material::Lambertian {
             texture: Texture::SolidColor(Vec3([0.73, 0.73, 0.73])),
