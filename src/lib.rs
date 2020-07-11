@@ -118,13 +118,17 @@ enum BvhNode<T: Boundable> {
     },
 }
 
-impl<T: Boundable + Clone> BvhNode<T> {
-    fn create<R: Rng + ?Sized>(mut objects: Vec<T>, rng: &mut R) -> Self {
+impl<T: Boundable> BvhNode<T> {
+    fn create<R: Rng + ?Sized>(objects: Vec<T>, rng: &mut R) -> Self {
+        Self::create_(&mut objects.into_iter().map(Some).collect::<Vec<_>>(), rng)
+    }
+
+    fn create_<R: Rng + ?Sized>(objects: &mut [Option<T>], rng: &mut R) -> Self {
         assert!(!objects.is_empty());
         let n = objects.len();
 
         if n == 1 {
-            let object = objects.remove(0);
+            let object = objects[0].take().unwrap();
             let bounding_box = object.bound();
             Self::Leaf {
                 object,
@@ -133,17 +137,19 @@ impl<T: Boundable + Clone> BvhNode<T> {
         } else {
             let axis: usize = rng.gen_range(0, 3);
 
-            objects.sort_by(|o1, o2| match (o1.bound(), o2.bound()) {
-                (Some(bb1), Some(bb2)) => bb1.min[axis]
-                    .partial_cmp(&bb2.min[axis])
-                    .unwrap_or(Ordering::Equal),
-                (None, Some(_)) => Ordering::Less,
-                (Some(_), None) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
+            objects.sort_by(|o1, o2| {
+                match (o1.as_ref().unwrap().bound(), o2.as_ref().unwrap().bound()) {
+                    (Some(bb1), Some(bb2)) => bb1.min[axis]
+                        .partial_cmp(&bb2.min[axis])
+                        .unwrap_or(Ordering::Equal),
+                    (None, Some(_)) => Ordering::Less,
+                    (Some(_), None) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
             });
             let (objects_left, objects_right) = objects.split_at_mut(n / 2);
-            let left = Self::create(Vec::from(objects_left), rng);
-            let right = Self::create(Vec::from(objects_right), rng);
+            let left = Self::create_(objects_left, rng);
+            let right = Self::create_(objects_right, rng);
             let bounding_box =
                 if let (Some(lb), Some(rb)) = (left.bounding_box(), right.bounding_box()) {
                     Some(lb + rb)
