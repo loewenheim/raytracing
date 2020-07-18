@@ -3,21 +3,27 @@ use rand::Rng;
 use std::f64::consts::PI;
 use std::ops::Add;
 
+/// Things that can be intersected by rays
 pub trait Intersection {
-    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint>;
+    /// Computes an intersection point of a ray with `this`, if one exists.
+    /// # Arguments
+    /// * `ray` - The ray to intersect with
+    /// * `interval` - An intersection point only counts if the corresponding
+    ///                ray parameter value is in `interval`
+    /// * `time` - The time at which the ray is emitted
+    fn intersect(&self, ray: &Ray, interval: (f64, f64), time: f64) -> Option<IntersectionPoint>;
 }
 
 impl<I: Intersection> Intersection for Vec<I> {
     fn intersect(
         &self,
         ray: &Ray,
-        tmin: f64,
-        mut tmax: f64,
+        (tmin, mut tmax): (f64, f64),
         time: f64,
     ) -> Option<IntersectionPoint> {
         let mut intersection_point = None;
         for i in self.iter() {
-            if let Some(ip) = i.intersect(ray, tmin, tmax, time) {
+            if let Some(ip) = i.intersect(ray, (tmin, tmax), time) {
                 tmax = ip.t;
                 intersection_point = Some(ip);
             }
@@ -27,6 +33,7 @@ impl<I: Intersection> Intersection for Vec<I> {
     }
 }
 
+/// Things that may have a bounding box
 pub trait Boundable {
     fn bound(&self) -> Option<BoundingBox>;
 }
@@ -50,18 +57,14 @@ impl<T: Boundable> Boundable for Vec<T> {
     }
 }
 
+/// An enum containing all geometric shapes we use in the raytracer
 #[derive(Clone, Debug)]
 pub enum Shape {
-    Sphere {
-        center: Point3,
-        radius: f64,
-    },
+    /// A sphere
+    Sphere { center: Point3, radius: f64 },
 
-    Plane {
-        normal: UnitVec3,
-        offset: f64,
-    },
-
+    /// A sphere that moves along a ray. At `start_time`, it is at the
+    /// ray's origin.
     MovingSphere {
         ray: Ray,
         radius: f64,
@@ -69,6 +72,8 @@ pub enum Shape {
         end_time: f64,
     },
 
+    /// An axis-aligned rectangle. `axis` is the axis orthogonal
+    /// to the rectangle.
     Rectangle {
         axis: Axis,
         lower_left: (f64, f64),
@@ -76,24 +81,23 @@ pub enum Shape {
         height: f64,
     },
 
-    ConstantMedium {
-        boundary: Box<Shape>,
-        density: f64,
-    },
+    /// A convex volume of fog or similar
+    ConstantMedium { boundary: Box<Shape>, density: f64 },
 
+    /// An axis-aligned box
     Box {
         min: Point3,
         max: Point3,
         sides: Vec<Shape>,
     },
 
+    /// A shape with flipped front and back face
     Flipped(Box<Shape>),
 
-    Translated {
-        inner: Box<Shape>,
-        offset: Vec3,
-    },
+    /// A translated shape
+    Translated { inner: Box<Shape>, offset: Vec3 },
 
+    /// A shape rotated around a coordinate axis
     Rotated {
         axis: Axis,
         inner: Box<Shape>,
@@ -102,10 +106,12 @@ pub enum Shape {
 }
 
 impl Shape {
+    /// Returns `self` with inverted front and back face
     pub fn flipped(self) -> Self {
         Self::Flipped(Box::new(self))
     }
 
+    /// Returns `self` translated by `offset`
     pub fn translated(self, offset: Vec3) -> Self {
         Self::Translated {
             inner: Box::new(self),
@@ -113,10 +119,13 @@ impl Shape {
         }
     }
 
+    /// Returns `self` rotated by `angle` degrees around `axis`
     pub fn rotated(self, axis: Axis, angle: f64) -> Self {
         self.rotate(axis, angle)
     }
 
+    /// Returns an axis-aligned rectangle given two points.
+    /// Only works correctly if the two points share one coordinate.
     pub fn rectangle(lower_left: Point3, upper_right: Point3) -> Self {
         let axis = if lower_left[0] == upper_right[0] {
             Axis::X
@@ -144,6 +153,7 @@ impl Shape {
         }
     }
 
+    /// Returns a new box
     pub fn new_box(min: Point3, max: Point3) -> Self {
         let mut sides = Vec::new();
 
@@ -204,6 +214,11 @@ impl Shape {
         Self::Box { min, max, sides }
     }
 
+    /// If `start_center` == `end_center`, returns a
+    /// `Sphere`, otherwise a `MovingSphere`
+    ///
+    /// # Panics
+    /// Panics if `end_time` ≤ `start_time`
     pub fn sphere(
         radius: f64,
         (start_time, start_center): (f64, Point3),
@@ -231,7 +246,12 @@ impl Shape {
 }
 
 impl Intersection for Shape {
-    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64, time: f64) -> Option<IntersectionPoint> {
+    fn intersect(
+        &self,
+        ray: &Ray,
+        (tmin, tmax): (f64, f64),
+        time: f64,
+    ) -> Option<IntersectionPoint> {
         match self {
             Shape::Sphere { center, radius } => {
                 let Ray {
@@ -272,28 +292,6 @@ impl Intersection for Shape {
                 }
             }
 
-            Shape::Plane { normal, offset } => {
-                if ray.direction.dot(**normal).abs() <= 1e-10 {
-                    None
-                } else {
-                    let u = Vec3(ray.origin.0);
-                    let t = (offset - u.dot(**normal)) / ray.direction.dot(**normal);
-
-                    if t >= tmin && t < tmax {
-                        let intersection_point = IntersectionPoint {
-                            t,
-                            in_vec: ray.direction.normed(),
-                            normal: *normal,
-                            point: ray.at(t),
-                            surface_coordinates: (0.0, 0.0),
-                        };
-                        Some(intersection_point)
-                    } else {
-                        None
-                    }
-                }
-            }
-
             Shape::MovingSphere {
                 ray: r,
                 radius,
@@ -305,7 +303,7 @@ impl Intersection for Shape {
                     radius: *radius,
                 };
 
-                sphere.intersect(ray, tmin, tmax, time)
+                sphere.intersect(ray, (tmin, tmax), time)
             }
 
             Shape::Rectangle {
@@ -347,14 +345,14 @@ impl Intersection for Shape {
 
             Self::Flipped(inner) => {
                 inner
-                    .intersect(ray, tmin, tmax, time)
+                    .intersect(ray, (tmin, tmax), time)
                     .map(|ip| IntersectionPoint {
                         normal: -ip.normal,
                         ..ip
                     })
             }
 
-            Self::Box { sides, .. } => sides.intersect(ray, tmin, tmax, time),
+            Self::Box { sides, .. } => sides.intersect(ray, (tmin, tmax), time),
             Self::Translated { inner, offset } => {
                 let moved_ray = Ray {
                     origin: ray.origin - *offset,
@@ -362,7 +360,7 @@ impl Intersection for Shape {
                 };
 
                 inner
-                    .intersect(&moved_ray, tmin, tmax, time)
+                    .intersect(&moved_ray, (tmin, tmax), time)
                     .map(|ip| IntersectionPoint {
                         point: ip.point + *offset,
                         ..ip
@@ -376,7 +374,7 @@ impl Intersection for Shape {
                 };
 
                 inner
-                    .intersect(&rotated_ray, tmin, tmax, time)
+                    .intersect(&rotated_ray, (tmin, tmax), time)
                     .map(|ip| IntersectionPoint {
                         point: ip.point.rotate(*axis, *angle),
                         normal: ip.normal.rotate(*axis, *angle),
@@ -386,10 +384,10 @@ impl Intersection for Shape {
             }
 
             Self::ConstantMedium { boundary, density } => boundary
-                .intersect(ray, f64::NEG_INFINITY, f64::INFINITY, time)
+                .intersect(ray, (f64::NEG_INFINITY, f64::INFINITY), time)
                 .and_then(|mut ip1| {
                     boundary
-                        .intersect(ray, ip1.t + 0.001, f64::INFINITY, time)
+                        .intersect(ray, (ip1.t + 0.001, f64::INFINITY), time)
                         .and_then(|mut ip2| {
                             let mut rng = rand::thread_rng();
                             ip1.t = ip1.t.max(tmin);
@@ -430,7 +428,6 @@ impl Intersection for Shape {
 impl Boundable for Shape {
     fn bound(&self) -> Option<BoundingBox> {
         match self {
-            Shape::Plane { .. } => None,
             Shape::Sphere { center, radius } => {
                 let min = *center - Vec3([1.0, 1.0, 1.0]) * *radius;
                 let max = *center + Vec3([1.0, 1.0, 1.0]) * *radius;
@@ -537,18 +534,23 @@ impl Rotate for Shape {
 }
 
 /// Contains information about the intersection of a ray
-/// with an object: the actual point, the normal vector
-/// at that point, and the parameter of the ray.
+/// with an object
 #[derive(Debug, Clone, Copy)]
 pub struct IntersectionPoint {
+    /// The space coordinates of the intersection point
     pub point: Point3,
+    /// The unit normal at the intersection point
     pub normal: UnitVec3,
+    /// The ray parameter value at which the hit occured
     pub t: f64,
+    /// The direction of the ray
     pub in_vec: UnitVec3,
+    /// The surface coordinates of the intersection point
     pub surface_coordinates: (f64, f64),
 }
 
 impl IntersectionPoint {
+    /// Whether the ray hit a front or back face
     pub fn face(&self) -> Face {
         if self.in_vec.dot(*self.normal) < 0.0 {
             Face::Front
@@ -564,14 +566,18 @@ pub enum Face {
     Back,
 }
 
+/// An axis-aligned bounding box
 #[derive(Debug, Clone, Copy)]
 pub struct BoundingBox {
+    /// The corner of the box with minimal coordinates
     pub min: Point3,
+    /// The corner of the box with maximal coordinates
     pub max: Point3,
 }
 
 impl BoundingBox {
-    pub fn hit(&self, ray: &Ray, mut tmin: f64, mut tmax: f64) -> bool {
+    /// Tests whether a ray hits the box within a given parameter interval
+    pub fn hit(&self, ray: &Ray, (mut tmin, mut tmax): (f64, f64)) -> bool {
         for i in 0..3 {
             let d = ray.direction[i];
             let o = ray.origin[i];
@@ -593,6 +599,8 @@ impl BoundingBox {
     }
 }
 
+/// The sum of two bounding boxes is the least bounding box
+/// containing both
 impl Add<BoundingBox> for BoundingBox {
     type Output = Self;
 

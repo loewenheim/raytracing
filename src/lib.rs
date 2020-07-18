@@ -234,7 +234,7 @@ impl BvhNode<Object> {
         rng: &mut R,
     ) -> Option<(f64, RayHit)> {
         if let Some(bb) = self.bounding_box() {
-            if !bb.hit(ray, tmin, tmax) {
+            if !bb.hit(ray, (tmin, tmax)) {
                 return None;
             }
         }
@@ -282,7 +282,7 @@ impl Object {
         rng: &mut R,
     ) -> Option<(f64, RayHit)> {
         self.shape
-            .intersect(r, tmin, tmax, time)
+            .intersect(r, (tmin, tmax), time)
             .as_ref()
             .map(|p| (p.t, self.material.scatter(p, rng)))
     }
