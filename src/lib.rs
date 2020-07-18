@@ -10,7 +10,12 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::cmp::Ordering;
 
-pub fn pixels(camera: &Camera, world: &World, image_options: ImageOptions) -> Vec<u8> {
+/// Computes a vector of byte values representing an image (3 bytes per pixel).
+/// # Arguments
+/// * `camera` - The camera the scene is viewed from
+/// * `scene` - The scene being viewed
+/// * `image_options` - Settings for the generated image
+pub fn pixels(camera: &Camera, scene: &Scene, image_options: ImageOptions) -> Vec<u8> {
     let bar = ProgressBar::new(image_options.height as _);
     bar.set_style(ProgressStyle::default_bar().template("Lines: {wide_bar} {percent:2} %"));
     (0..image_options.height)
@@ -20,15 +25,21 @@ pub fn pixels(camera: &Camera, world: &World, image_options: ImageOptions) -> Ve
         .flat_map(move |j| {
             (0..image_options.width)
                 .into_par_iter()
-                .map(move |i| pixel(&camera, &world, (i, j), image_options))
+                .map(move |i| pixel(&camera, &scene, (i, j), image_options))
         })
         .collect::<Vec<[u8; 3]>>()
         .concat()
 }
 
+/// Computes RGB byte values for one image pixel.
+/// # Arguments
+/// * `camera` - The camera the scene is viewed from
+/// * `scene` - The scene being viewed
+/// * `(row, column)` - The coordinates of the pixel
+/// * `image_options` - Settings for the generated image
 fn pixel<'a>(
     camera: &Camera,
-    world: &World,
+    scene: &Scene,
     (row, column): (u32, u32),
     ImageOptions {
         width,
@@ -45,7 +56,7 @@ fn pixel<'a>(
             let v = (f64::from(column) + rng.gen::<f64>()) / f64::from(height - 1);
             ray_color(
                 &camera.ray(u, v, &mut rng),
-                world,
+                scene,
                 camera.random_time(&mut rng),
                 &mut rng,
                 max_reflections,
@@ -61,7 +72,14 @@ fn pixel<'a>(
     ]
 }
 
-fn ray_color<R>(ray: &Ray, world: &World, time: f64, rng: &mut R, max_reflections: usize) -> Vec3
+/// Computes the color of a ray.
+/// # Arguments
+/// * `ray` - The ray to color
+/// * `scene` - The scene being viewed
+/// * `time` - The time at which the ray is emitted
+/// * `rng` - A random number generator
+/// * `max_reflections` - The maximum number of time a ray can be reflected or scattered
+fn ray_color<R>(ray: &Ray, scene: &Scene, time: f64, rng: &mut R, max_reflections: usize) -> Vec3
 where
     R: Rng + ?Sized,
 {
@@ -69,8 +87,8 @@ where
     let mut result = Vec3([1.0, 1.0, 1.0]);
 
     for _ in 0..max_reflections {
-        match world.objects.scatter(&ray, 0.001, f64::INFINITY, time, rng) {
-            None => return result * world.background_color,
+        match scene.objects.scatter(&ray, 0.001, f64::INFINITY, time, rng) {
+            None => return result * scene.background_color,
             Some(RayHit::Emitted(color)) => return result * color,
             Some(RayHit::Scattered {
                 attenuation,
@@ -85,21 +103,27 @@ where
     Vec3([0.0, 0.0, 0.0])
 }
 
+/// Settings for generating an image.
 #[derive(Debug, Clone, Copy)]
 pub struct ImageOptions {
+    /// The image's height
     pub height: u32,
+    /// The images width
     pub width: u32,
+    /// How many rays to sample and average for every pixel
     pub samples_per_pixel: usize,
+    /// The maximum number of times a ray can be reflected or scattered
     pub max_reflections: usize,
 }
 
 #[derive(Clone, Debug)]
-pub struct World {
+pub struct Scene {
     objects: BvhNode<Object>,
     background_color: Vec3,
 }
 
-impl World {
+impl Scene {
+    /// Creates a new scene. The vector of objects is converted to a BVH tree
     pub fn new<R: Rng + ?Sized>(objects: Vec<Object>, background_color: Vec3, rng: &mut R) -> Self {
         Self {
             objects: BvhNode::create(objects, rng),
@@ -108,13 +132,17 @@ impl World {
     }
 }
 
+/// A Node in a BVH (bounded volume hierarchy) tree
 #[derive(Debug, Clone)]
 enum BvhNode<T: Boundable> {
+    /// A leaf, containing an object and possibly a bounding box
     Leaf {
         bounding_box: Option<BoundingBox>,
         object: T,
     },
 
+    /// A branch, containing a left and right [`BVHNode`] and possibly
+    /// a bounding box
     Branch {
         bounding_box: Option<BoundingBox>,
         left: Box<BvhNode<T>>,
@@ -127,6 +155,8 @@ impl<T: Boundable> BvhNode<T> {
         Self::create_(&mut objects.into_iter().map(Some).collect::<Vec<_>>(), rng)
     }
 
+    /// Creates a BVH tree from a slice of objects by randomly choosing an axis
+    /// splitting the slice in half along that axis, and recursing
     fn create_<R: Rng + ?Sized>(objects: &mut [Option<T>], rng: &mut R) -> Self {
         assert!(!objects.is_empty());
         let n = objects.len();
@@ -178,6 +208,11 @@ impl<T: Boundable> BvhNode<T> {
 }
 
 impl BvhNode<Object> {
+    /// Computes the scattering of a ray hitting the BVH tree.
+    /// We first check whether the tree's bounding box is hit.
+    /// If so, we recurse further into the tree.
+    /// Only when we arrive at a leaf do we actually check whether
+    /// an object is hit.
     fn scatter<R: Rng + ?Sized>(
         &self,
         ray: &Ray,
@@ -189,6 +224,7 @@ impl BvhNode<Object> {
         self.scatter_(ray, tmin, tmax, time, rng).map(|x| x.1)
     }
 
+    #[doc(hidden)]
     fn scatter_<R: Rng + ?Sized>(
         &self,
         ray: &Ray,
@@ -220,14 +256,24 @@ impl BvhNode<Object> {
     }
 }
 
+/// A combination of geometry and material
 #[derive(Clone, Debug)]
 pub struct Object {
+    /// The physical shape of the object
     pub shape: Shape,
+    /// The material of the object
     pub material: Material,
 }
 
 impl Object {
-    pub fn scatter<R: Rng + ?Sized>(
+    /// Computes the result of a ray hitting the object and
+    /// interacting with the material
+    ///
+    /// # Arguments
+    /// * `r` - The ray
+    /// * `time` - The time at which the ray is emitted
+    /// * `rng` - A random number generator
+    fn scatter<R: Rng + ?Sized>(
         &self,
         r: &Ray,
         tmin: f64,
@@ -248,8 +294,14 @@ impl Boundable for Object {
     }
 }
 
+/// The result of a ray hitting an [`Object`]
+///
+/// [`Object`]: ./struct.Object.html
 pub enum RayHit {
+    /// The ray was scattered, resulting in a new ray and
+    /// an attenuation value
     Scattered { ray: Ray, attenuation: Vec3 },
+    /// The ray hit a light source of a given color
     Emitted(Vec3),
 }
 
@@ -258,21 +310,40 @@ pub mod camera {
     use rand::distributions::Distribution;
     use rand::Rng;
 
+    /// A representation of a camera
     #[derive(Debug, Clone, Copy)]
     pub struct Camera {
+        /// The aspect ratio of the camera's viewport
         aspect_ratio: f64,
+        /// The vector from the lower left corner of the
+        /// viewport to the lower right corner
         horizontal: Vec3,
+        /// The radius of the lens
         lens_radius: f64,
+        /// Coordinates of the lower left corner of the viewport
         lower_left_corner: Point3,
+        /// An orthonormal base consisting of
+        /// * the camera's "right" direction,
+        /// * the camera's "up" direction,
+        /// * the camera's "back" (away from the viewport) direction
         onb: Onb,
+        /// The point the camera is situated at
         origin: Point3,
+        /// The time at which the shutter closes
         shutter_close: f64,
+        /// The time at which the shutter opens
         shutter_open: f64,
+        /// The vector from the lower left corner of the
+        /// viewport to the upper left corner
         vertical: Vec3,
+        /// The camera's vertical field of view in degrees
         vfov: f64,
     }
 
     impl Camera {
+        /// Creates a new camera from a [`CameraOptions`] struct
+        ///
+        /// [`CameraOptions`]: ./struct.CameraOptions.html
         pub fn new(
             CameraOptions {
                 aperture,
@@ -312,7 +383,10 @@ pub mod camera {
             }
         }
 
-        pub fn ray<R: Rng + ?Sized>(&self, s: f64, t: f64, rng: &mut R) -> Ray {
+        /// Computes the ray from the camera's origin to the point (s, t)
+        /// in viewport coordinates. The ray is randomized slightly to allow
+        /// for random sampling
+        pub(crate) fn ray<R: Rng + ?Sized>(&self, s: f64, t: f64, rng: &mut R) -> Ray {
             let rd = InsideUnitDisc.sample(rng) * self.lens_radius;
             let offset = *self.onb[0] * rd[0] + *self.onb[1] * rd[1];
             let origin = self.origin + offset;
@@ -321,21 +395,32 @@ pub mod camera {
             Ray { origin, direction }
         }
 
-        pub fn random_time<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
+        /// A random time between the shutter opening and closing
+        pub(crate) fn random_time<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
             rng.gen_range(self.shutter_open, self.shutter_close)
         }
     }
 
+    /// A struct capturing the options needed to create a camera
     #[derive(Debug, Clone, Copy)]
     pub struct CameraOptions {
+        /// The radius of the camera's aperture
         pub aperture: f64,
+        /// The aspect ratio of the camera's viewport
         pub aspect_ratio: f64,
+        /// The distance at which things are in focus
         pub focus_distance: f64,
+        /// A point the camera is looking straight at
         pub looking_at: Point3,
+        /// The point the camera is situated at
         pub origin: Point3,
+        /// The time at which the shutter closes
         pub shutter_close: f64,
+        /// The time at which the shutter opens
         pub shutter_open: f64,
+        /// The camera's vertical field of view in degrees
         pub vfov: f64,
+        /// A vector describing the camera's "up" direction.
         pub vup: Vec3,
     }
 }

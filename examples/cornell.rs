@@ -3,7 +3,7 @@ use raytracing::camera::{Camera, CameraOptions};
 use raytracing::geometry::{Axis, Point3, Shape, Vec3};
 use raytracing::materials::Material;
 use raytracing::textures::Texture;
-use raytracing::{pixels, ImageOptions, Object, World};
+use raytracing::{pixels, ImageOptions, Object, Scene};
 
 fn main() {
     const ASPECT_RATIO: f64 = 1.0;
@@ -105,11 +105,11 @@ fn main() {
         },
     });
 
-    let world = World::new(objects, Vec3([0.0, 0.0, 0.0]), &mut rng);
+    let scene = Scene::new(objects, Vec3([0.0, 0.0, 0.0]), &mut rng);
     let image: RgbImage = ImageBuffer::from_raw(
         IMAGE_WIDTH,
         IMAGE_HEIGHT,
-        pixels(&camera, &world, image_options),
+        pixels(&camera, &scene, image_options),
     )
     .unwrap();
 
